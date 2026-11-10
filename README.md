@@ -58,11 +58,14 @@ docs/                   技术说明与维护记录
 ```bash
 pnpm install --frozen-lockfile
 pnpm dev             # 前端开发
-pnpm app:dev         # 桌面应用开发
+pnpm app:dev         # 桌面应用开发 (当前平台)
+pnpm macos:dev       # macOS 桌面端开发 (需 macOS 环境)
+pnpm macos:build     # macOS 打包 DMG (需 macOS 或 CI 环境)
+pnpm linux:build     # Linux 打包 deb + AppImage
 pnpm build           # 类型检查与前端构建
 ```
 
-各平台配置位于 `src-tauri/tauri*.conf.json`。移动端及 macOS 开发需要相应平台的 SDK 和工具链。
+各平台配置位于 `src-tauri/tauri*.conf.json`。macOS 平台移植、架构细节与本地/云端 CI 打包说明见 [macOS 适配与构建指南](docs/macos-port.md)。移动端及 macOS 开发需要相应平台的 SDK 和工具链。
 
 - exFAT 等不支持符号链接的文件系统需保留 `.npmrc` 中的 `node-linker=hoisted`；部分原生构建步骤仍可能受文件系统限制。
 - 依赖安装脚本的允许列表见 `package.json` 与 `pnpm-workspace.yaml`。

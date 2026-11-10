@@ -77,27 +77,22 @@ jobs:
             found_dmg=1
           done
           
-          # 打包 .app 绿色压缩包（便于不需要 DMG 安装的用户直接拖拽）
-          for app in $(find src-tauri/target -name 'HGhub.app' -type d); do
-            echo "发现 APP: $app"
-            tar -czf "artifacts/HGhub_${V}_${{ matrix.arch }}.app.tar.gz" -C "$(dirname "$app")" "HGhub.app"
-          done
-          
           ls -lh artifacts/
           if [ "$found_dmg" -eq 0 ]; then
             echo "::error::未找到 DMG 构建产物"
             exit 1
           fi
 
-      - name: 上传构建产物
-        uses: actions/upload-artifact@v4
+      - name: 上传构建产物 (DMG 免解压直下)
+        uses: actions/upload-artifact@v7
         with:
-          name: HGhub-macOS-${{ matrix.arch }}
-          path: artifacts/*
+          path: artifacts/HGhub_${{ steps.ver.outputs.version }}_${{ matrix.arch }}.dmg
+          archive: false
           if-no-files-found: error
 
   publish-release:
     name: 发布 GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [macos]
     runs-on: ubuntu-latest
     permissions:
@@ -106,7 +101,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: 下载所有 macOS 产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
