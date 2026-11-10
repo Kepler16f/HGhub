@@ -1,81 +1,131 @@
-# HGhub
+# HGhub (macOS 社区复刻移植版)
 
-**基于 Rust 与 Tauri 2 的跨平台界面与交互实践项目。**
+> [!IMPORTANT]
+> **本仓库为 [Minireel/HGhub](https://github.com/Minireel/HGhub) 的社区复刻与 macOS 深度移植版本。**
+> 
+> 本分支/复刻版本核心专注于为 **macOS 平台（Apple Silicon M系列芯片与 Intel 芯片）** 提供完整、开箱即用的原生桌面体验，补齐了 macOS 专用构建脚本、CI 云端构建流水线与系统交互细节。
+> 
+> 本项目严格遵循上游 [PolyForm Noncommercial 1.0.0](LICENSE) 开源许可证，**纯技术实践与学习研究，严禁任何形式的商业用途、广告变现、VIP/卡密收费**。
 
-HGhub 起源于个人对 Tauri 2 和移动端开发的学习与尝试。感谢大家的关注与贡献；项目由个人利用业余时间维护，关注度的增长不会改变维护范围，也不代表服务或支持承诺。
+---
 
-## 维护范围与社区反馈
+## 🍎 macOS 复刻移植特性
 
-维护者本人后续仅主动维护 **UI/UX、交互细节与用户体验**，不再主动跟进上游数据获取、解析或播放链路适配，不承诺外部接口及相关功能持续可用。
+相比官方原版主要聚焦于 Windows/Android，本移植版针对 macOS 进行了以下深度适配：
 
-**任何主题的 PR 与 Issues 均可提交。**维护者会根据时间与精力低频阅读、酌情响应，并逐项决定是否处理或合并。提交不代表一定获得回复或被采纳；接受某次社区贡献，也不代表维护者恢复该方向的主动开发或承担持续适配承诺。
+1. **原生沉浸标题栏与系统红绿灯垂直居中**：
+   - 启用 macOS 原生 `titleBarStyle: Overlay` 隐藏标题栏模式。
+   - 针对不同 macOS 版本（Sonoma / Sequoia 等）系统红绿灯几何尺寸差异，在 `src-tauri/src/macos_titlebar.rs` 中通过 `objc2` 动态探测 AppKit 的 `NSWindow` 按钮尺寸，实时计算精确居中偏移量，杜绝标题栏歪斜。
+   - 原生全屏状态下自动避让并收回标题栏侧边内边距。
 
-本说明用于交代维护者的工作范围与支持边界，不构成对其他开发者的维护要求，也不代表维护者为第三方贡献、修改版或独立项目提供持续担保。
+2. **WebKit 平台协议与流媒体代理对齐**：
+   - macOS WebKit 强制要求 URI Scheme 格式，本项目在前端与 Rust 后端自动切换为 `hg://localhost` 协议基址，完整保障封面 AES 解密输出与 HLS 流媒体切片代理正常工作。
 
-## 非商业立场
+3. **三架构全覆盖**：
+   - **Apple Silicon (`arm64`)**：针对 M1 / M2 / M3 / M4 系列芯片原生编译，极低能耗与流畅动画。
+   - **Intel (`x64`)**：兼容传统 Intel 处理器的 Mac 机型。
+   - **Universal (`universal`)**：通用双架构 DMG，全机型免甄别运行。
 
-本项目采用 [PolyForm Noncommercial 1.0.0](LICENSE)，**禁止任何商业用途**，包括销售、广告变现、卡密、VIP、付费解锁，以及作为收费产品或服务的一部分使用；具体授权范围以许可证全文为准。
+4. **Ad-hoc 完整代码签名**：
+   - 在 `src-tauri/tauri.macos.conf.json` 中配置了 `signingIdentity: "-"`，对 Mach-O 二进制文件与资源包完成完整绑定签名，避免被系统直接判定为损坏 bundle。
 
-维护者**不提供商业授权，不接受任何广告、推广、商务合作或其他合作洽谈**，也未授权任何个人或组织以维护者或本项目名义收费、招揽业务。社区技术贡献与问题反馈不属于商务合作。
+5. **GitHub Actions 自动化云端出包（方案 A）**：
+   - 无需本地拥有 Mac 电脑，只需在 GitHub 仓库一键触发工作流，即可由 GitHub 官方 macOS 虚拟机自动编译并打包出完整的 `.dmg` 与 `.app.tar.gz`。
 
-## 项目说明与责任边界
+---
 
-- 本仓库记录个人技术实践，包含界面、播放、网络请求等实现。维护者不运营内容托管服务，不参与外部音视频内容的制作、上传或经营。
-- 项目与外部站点、内容提供者及其权利方不存在官方隶属、代理或背书关系。涉及第三方内容、名称或标识时，相关权利仍归各自权利人；代码公开不代表已取得这些内容的使用或传播授权。
-- 软件按现状提供。在适用法律允许的范围内，维护者不保证其完整性、准确性、安全性、适用性或持续可用性，也不承诺修复、更新或响应期限。
-- 第三方修改、分发、宣传或经营行为不代表维护者的意见或授权；维护者无法控制独立副本及其后续行为。本项目的信息以[本仓库](https://github.com/Minireel/HGhub)的公开记录为准。
-- 以上说明用于澄清项目性质、维护范围与授权边界，不替代适用法律，也不排除依法应承担的责任。软件许可证仅涉及相应代码权利，不构成对第三方内容或服务的授权。
+## 📦 如何获取与构建 macOS 版本
 
-## 官方通知与权益反馈
+### 方案 A：通过 GitHub Actions 云端构建（推荐，无需 Mac 设备）
 
-维护者尊重各方合法权益，**将积极响应来自上游、GitHub 平台、版权方及其授权代表、有关机构或公众组织的正式通知与合理关切**。此类事项不适用普通功能反馈的低频处理安排。
+如果你目前使用 Windows 或 Linux，无法在本地编译 macOS 原生应用，可以直接使用本仓库配置的 CI 流水线：
 
-可通过 [GitHub Issues](https://github.com/Minireel/HGhub/issues)或平台正式渠道联系，说明相关主体、涉及内容、具体诉求及可核实依据。涉及个人信息或非公开材料时，可先提出联系请求，再协商适当的沟通方式。
+1. **推送到自己的 GitHub 仓库**：
+   将本仓库推送（Push）到你的 GitHub 个人账号下。
+2. **触发云端编译**：
+   - 打开 GitHub 仓库页面的 **Actions** 标签。
+   - 在左侧选择 **Build macOS Release** 工作流。
+   - 点击 **Run workflow**（分支选择 `main`），确认启动。
+3. **下载 DMG 产物**：
+   GitHub 官方 `macos-latest` 虚拟机将在约 5~8 分钟内完成编译，并在构建记录底部的 **Artifacts** 区域提供下载：
+   - `HGhub_<版本>_arm64.dmg`（推荐 M 系列芯片用户）
+   - `HGhub_<版本>_x64.dmg`（推荐 Intel 芯片用户）
+   - `HGhub_<版本>_universal.dmg`（通用双架构版）
 
-收到通知后，维护者会尽快核实、沟通并配合处理，视具体情况采取修改或移除相关内容、暂停相关功能、停止维护、归档或调整仓库可见性等措施。处理范围限于维护者能够控制的仓库和渠道，不承诺控制已独立分发的副本。
+---
 
-## 技术与目录
+### 方案 B：在 Mac 本地开发与编译
 
-| 层 | 技术 |
+如果你手头有 Mac 电脑，也可以在本地直接运行或打包：
+
+```bash
+# 1. 确保已安装基础工具链
+xcode-select --install
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+corepack enable
+
+# 2. 安装前端依赖
+pnpm install
+
+# 3. 启动 macOS 本地开发热重载
+pnpm macos:dev
+
+# 4. 一键打包 macOS DMG 安装包
+# 方式一：使用内置向导脚本（支持 native / arm64 / x64 / universal）
+./scripts/build-macos.sh universal
+
+# 方式二：使用 pnpm 命令
+pnpm macos:build:arm64       # 打包 Apple Silicon M系列芯片 DMG
+pnpm macos:build:x64         # 打包 Intel 芯片 DMG
+pnpm macos:build:universal   # 打包 Universal 通用版 DMG
+```
+
+---
+
+## ⚠️ macOS 首次打开“应用已损坏”解决方法
+
+由于开源个人构建未向 Apple 购买每年 99 美元的开发者证书与公证服务，首次在 macOS 上双击运行安装的 `HGhub.app` 时，系统 Gatekeeper 安全机制可能会弹出：
+
+> **“HGhub” 已损坏，打不开。您应该将它移到废纸篓。**  
+> 或 **“无法验证开发者，macOS 无法验证此 App 是否包含恶意软件”**
+
+这是 macOS 针对未公证应用施加的隔离属性（`com.apple.quarantine`），**只需在终端执行一次以下命令即可解除拦截**：
+
+```bash
+sudo xattr -rd com.apple.quarantine /Applications/HGhub.app
+```
+
+*或者：在「访达」的「应用程序」目录中，**按住 Control 键并单击（右键）HGhub.app**，在弹出的菜单中选择「打开」，并在弹窗中再次点击「打开」，即可永久加入受信任列表。*
+
+---
+
+## 🛠️ 技术栈与目录结构
+
+| 层级 | 技术方案 |
 | --- | --- |
 | 应用框架 | Rust、Tauri 2 |
-| 界面 | React、TypeScript、Vite、Tailwind CSS |
-| 播放组件 | hls.js |
-| 网络 | reqwest、rustls |
+| macOS 原生集成 | AppKit（`objc2`）、WebKit |
+| 前端界面 | React 19、TypeScript、Vite、Tailwind CSS |
+| 播放核心 | hls.js |
+| 网络与解密 | reqwest、rustls、aes-128-cbc |
 
 ```text
 src/                    界面、交互、状态管理与组件
-src-tauri/              原生能力与 Rust 实现
-scripts/                开发、构建与验证脚本
-tests/                  本地测试页面与回归用例
-docs/                   技术说明与维护记录
+src-tauri/              原生能力、macOS 标题栏控制与 Rust 路由
+scripts/                macOS 打包向导 (build-macos.sh) 与开发验证脚本
+docs/                   macOS 移植技术指南 (macos-port.md) 与架构文档
+.github/workflows/      GitHub Actions 云端构建流水线 (build-macos.yml)
 ```
 
-## 本地开发
+---
 
-基础环境：Node.js 22、pnpm 10、Rust 1.90 或更高版本，以及目标平台所需的 Tauri 开发环境。
+## ⚖️ 非商业立场与免责声明
 
-```bash
-pnpm install --frozen-lockfile
-pnpm dev             # 前端开发
-pnpm app:dev         # 桌面应用开发 (当前平台)
-pnpm macos:dev       # macOS 桌面端开发 (需 macOS 环境)
-pnpm macos:build     # macOS 打包 DMG (需 macOS 或 CI 环境)
-pnpm build           # 类型检查与前端构建
-```
+1. 本项目采用 [PolyForm Noncommercial 1.0.0](LICENSE) 许可证，**严格禁止任何商业用途**，包括但不限于销售、广告推广、卡密变现、收费 VIP 或作为付费服务载体。
+2. 本项目为个人与社区的技术探索、跨平台交互实验项目。维护者与开发者不运营任何内容托管服务，不参与外部音视频内容的制作、上传或分发。
+3. 软件按现状（AS-IS）提供，不承诺任何外部接口的持续有效性。涉及第三方内容或标识的权利均归原权利人所有。
 
-各平台配置位于 `src-tauri/tauri*.conf.json`。macOS 平台移植、架构细节与本地/云端 CI 打包指南见 [macOS 适配与移植指南](docs/macos-port.md)。移动端及 macOS 开发需要相应平台的 SDK 和工具链。
+## 👏 致谢
 
-- exFAT 等不支持符号链接的文件系统需保留 `.npmrc` 中的 `node-linker=hoisted`；部分原生构建步骤仍可能受文件系统限制。
-- 依赖安装脚本的允许列表见 `package.json` 与 `pnpm-workspace.yaml`。
-- 内容处理、网络安全边界与本地回归说明见[客户端内容与网络安全](docs/security.md)。
-
-## 许可证
-
-当前版本适用 [PolyForm Noncommercial License 1.0.0](LICENSE)。本页说明不替代许可证全文，也不另行增加用户或开发者行为规范。
-
-历史版本 v1.0.1 及更早版本曾以 MIT 许可证发布，已取得的相应授权不因后续换证而撤回；自 v1.1.0 起的新版本适用 PolyForm Noncommercial 1.0.0。
-
-## 社区
-
-[Linux.DO](https://linux.do/)
+- 感谢上游项目 [Minireel/HGhub](https://github.com/Minireel/HGhub) 团队的原生实现与架构设计。
+- 感谢 [Tauri](https://tauri.app/) 团队提供优秀的跨平台桌面框架。
