@@ -19,9 +19,6 @@ jobs:
           - target: x86_64-apple-darwin
             name: Intel (x64)
             arch: x64
-          - target: universal-apple-darwin
-            name: Universal (通用版)
-            arch: universal
 
     steps:
       - uses: actions/checkout@v4
@@ -135,7 +132,6 @@ jobs:
             ### 下载说明
             - **Apple Silicon (M1/M2/M3/M4 系列芯片)**: 推荐下载 `HGhub_${{ steps.ver.outputs.version }}_arm64.dmg`
             - **Intel 芯片**: 推荐下载 `HGhub_${{ steps.ver.outputs.version }}_x64.dmg`
-            - **通用双架构版 (全机型支持)**: 推荐下载 `HGhub_${{ steps.ver.outputs.version }}_universal.dmg`
 
             ### macOS 首次打开说明（绕过未签名提示）
             由于开源个人构建未购买苹果开发者企业证书签名与公证，首次打开若提示“已损坏”或“无法打开”，请在「终端」中执行以下命令清除隔离属性：
