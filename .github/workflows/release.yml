@@ -208,7 +208,7 @@ jobs:
 
       # 打包目标（app + dmg）取自 src-tauri/tauri.macos.conf.json；未配置开发者证书，产物为 ad-hoc 签名
       - name: 构建（Universal dmg）
-        run: pnpm tauri build --target universal-apple-darwin
+        run: pnpm tauri build --config src-tauri/tauri.macos.conf.json --target universal-apple-darwin
 
       - name: 收集产物
         shell: bash
