@@ -3,8 +3,8 @@ name: Build iOS IPA
 on:
   workflow_dispatch:
   push:
-    branches: ["main"]
-    tags: ["v*"]
+    tags:
+      - "v*-ios"
 
 jobs:
   ios:
@@ -23,6 +23,7 @@ jobs:
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             V="${GITHUB_REF_NAME#v}"
+            V="${V%-ios}"
           else
             V="$(node -p "require('./src-tauri/tauri.conf.json').version")"
           fi
