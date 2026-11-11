@@ -1,0 +1,141 @@
+name: Build Desktop ARM64 (Linux & Windows)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  # ================= Linux ARM64：deb + AppImage =================
+  linux-arm64:
+    name: Linux ARM64 (deb + AppImage)
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装系统依赖 (Tauri 2 / WebKit2GTK-4.1)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev \
+            build-essential pkg-config libssl-dev patchelf libfuse2 \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: linux-arm64
+
+      - name: 安装前端依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 构建 Linux ARM64 (deb + appimage)
+        run: pnpm tauri build --bundles deb appimage
+
+      - name: 收集产物
+        run: |
+          mkdir -p artifacts
+          cp src-tauri/target/release/bundle/deb/*.deb artifacts/ 2>/dev/null || true
+          cp src-tauri/target/release/bundle/appimage/*.AppImage artifacts/ 2>/dev/null || true
+          ls -lh artifacts/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: artifacts/*
+          if-no-files-found: error
+
+  # ================= Windows ARM64：NSIS 安装包 + 便携包 =================
+  windows-arm64:
+    name: Windows ARM64 (setup + portable)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: windows-arm64
+
+      - name: 安装前端依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 构建 Windows ARM64 (NSIS 安装包)
+        run: pnpm tauri build --bundles nsis --target aarch64-pc-windows-msvc
+
+      - name: 收集产物（安装包 + 便携包）
+        shell: pwsh
+        run: |
+          $v = (Get-Content "package.json" | ConvertFrom-Json).version
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          
+          # 收集并重命名 NSIS 安装包
+          $setup = Get-ChildItem "src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/*.exe" | Select-Object -First 1
+          if ($setup) {
+            Copy-Item $setup.FullName "artifacts/HGhub_${v}_arm64_setup.exe"
+          }
+          
+          # 打包便携包
+          $bin = "src-tauri/target/aarch64-pc-windows-msvc/release/huangguo-client.exe"
+          if (-not (Test-Path $bin)) {
+            $bin = (Get-ChildItem "src-tauri/target/aarch64-pc-windows-msvc/release" -Filter *.exe | Select-Object -First 1).FullName
+          }
+          Copy-Item $bin "artifacts/HGhub.exe"
+          Compress-Archive -Path "artifacts/HGhub.exe" -DestinationPath "artifacts/HGhub_${v}_arm64_portable.zip" -Force
+          Remove-Item "artifacts/HGhub.exe"
+          
+          Get-ChildItem artifacts | Select-Object Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-arm64
+          path: artifacts/*
+          if-no-files-found: error
+
+  # ================= 上传至最新 Release =================
+  publish:
+    name: 上传构建产物至 Release
+    needs: [linux-arm64, windows-arm64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载 Linux ARM64 产物
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-arm64
+          path: release-files
+
+      - name: 下载 Windows ARM64 产物
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-arm64
+          path: release-files
+
+      - name: 查看待上传文件
+        run: ls -lh release-files
+
+      - name: 上传至 v1.2.1-desktop Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v1.2.1-desktop release-files/* --clobber --repo ${{ github.repository }}
