@@ -1,7 +1,9 @@
 # HGhub (跨平台桌面与移动端社区移植增强版)
 
+**派生自上游仓库 / Forked from：[Minireel/HGhub](https://github.com/Minireel/HGhub)**
+
 > [!IMPORTANT]
-> **本仓库为 [Minireel/HGhub](https://github.com/Minireel/HGhub) 的社区复刻与跨平台全端移植增强版本。**
+> **本仓库为 [Minireel/HGhub](https://github.com/Minireel/HGhub) 的社区派生与跨平台全端移植增强版本。**
 > 
 > 由于上游官方遵循 Source-only 策略仅发布源码标签、不分发预编译安装包，本仓库致力于为 **macOS（Apple Silicon & Intel）**、**Windows on ARM (WoA)**、**Linux（x86_64 & ARM64）** 桌面端以及 **iOS (IPA 免签生产包)** 提供开箱即用的预编译安装包与自动化 CI 构建工作流。
 > 
