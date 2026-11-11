@@ -110,10 +110,10 @@ jobs:
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" artifacts/*.ipa --clobber
-            gh release edit "$TAG" --title "HGhub v${V} iOS 正式版" --notes "$NOTES" --prerelease=false --latest
+            gh release edit "$TAG" --title "1.2.1-ios" --notes "$NOTES" --prerelease=false --latest
           else
             gh release create "$TAG" artifacts/*.ipa \
-              --title "HGhub v${V} iOS 正式版" \
+              --title "1.2.1-ios" \
               --notes "$NOTES" \
               --latest
           fi
