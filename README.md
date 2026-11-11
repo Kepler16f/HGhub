@@ -1,9 +1,9 @@
-# HGhub (macOS & Linux 桌面社区移植版)
+# HGhub (跨平台桌面社区移植版 · macOS / Linux / Windows ARM64)
 
 > [!IMPORTANT]
-> **本仓库为 [Minireel/HGhub](https://github.com/Minireel/HGhub) 的社区复刻与桌面端（macOS / Linux）移植维护版本。**
+> **本仓库为 [Minireel/HGhub](https://github.com/Minireel/HGhub) 的社区复刻与全架构桌面端移植维护版本。**
 > 
-> 由于上游官方遵循 Source-only 策略仅发布源码标签、不分发预编译安装包，本仓库致力于为 **macOS（Apple Silicon & Intel）** 与 **Linux（Debian/Ubuntu & AppImage）** 桌面端提供开箱即用的预编译安装包与自动化 CI 构建工作流。
+> 由于上游官方遵循 Source-only 策略仅发布源码标签、不分发预编译安装包，本仓库致力于为 **macOS（Apple Silicon & Intel）**、**Linux（x86_64 & ARM64）** 以及 **Windows on ARM64** 桌面端提供开箱即用的预编译安装包与自动化 CI 构建工作流。
 > 
 > 本项目严格遵循上游 [PolyForm Noncommercial 1.0.0](LICENSE) 开源许可证，**仅供个人技术探索与跨平台实践，严禁任何形式的商业用途、广告变现、VIP/卡密收费**。
 
@@ -15,10 +15,11 @@
 
 | 操作系统 | 目标架构 | 软件包类型 | 下载文件名 | 适用设备 / 说明 |
 | :--- | :--- | :--- | :--- | :--- |
-| **macOS** | Apple Silicon | DMG 镜像 | `HGhub_1.2.1_arm64.dmg` | **推荐**：M1 / M2 / M3 / M4 系列芯片 Mac |
+| **macOS** | Apple Silicon | DMG 镜像 | `HGhub_1.2.1_arm64.dmg` | **macOS 推荐**：M1 / M2 / M3 / M4 系列芯片 Mac |
 | **macOS** | Intel | DMG 镜像 | `HGhub_1.2.1_x64.dmg` | 传统 Intel 处理器 Mac 机型 |
-| **Linux** | x86_64 | deb 安装包 | `HGhub_1.2.1_amd64.deb` | Ubuntu / Debian / Deepin / Mint 等 |
-| **Linux** | x86_64 | AppImage | `HGhub_1.2.1_amd64.AppImage` | Linux 通用免安装独立运行包 |
+| **Windows** | ARM64 (WoA) | 安装包 / 便携包 | `HGhub_1.2.1_arm64_setup.exe`<br>`HGhub_1.2.1_arm64_portable.zip` | 骁龙 X Elite / 微软 Surface 等 Windows on ARM 设备 |
+| **Linux** | x86_64 | deb / AppImage | `HGhub_1.2.1_amd64.deb`<br>`HGhub_1.2.1_amd64.AppImage` | Ubuntu / Debian / Deepin / Mint x86_64 桌面端 |
+| **Linux** | ARM64 (aarch64) | deb / AppImage | `HGhub_1.2.1_arm64.deb`<br>`HGhub_1.2.1_arm64.AppImage` | 树莓派 4/5、ARM64 架构 Linux 电脑与掌机 |
 
 ---
 
