@@ -1,9 +1,10 @@
 # HGhub (跨平台桌面与移动端社区移植增强版)
 
-**派生自上游仓库 / Forked from：[Minireel/HGhub](https://github.com/Minireel/HGhub)**
+> 🔗 **原项目官方仓库 / Upstream Repository**：[https://github.com/Minireel/HGhub](https://github.com/Minireel/HGhub)  
+> 📌 **项目定位**：本项目派生（Fork）自官方源码，为社区全平台（macOS / Windows / Linux / iOS）预编译发行与体验增强版本。
 
 > [!IMPORTANT]
-> **本仓库为 [Minireel/HGhub](https://github.com/Minireel/HGhub) 的社区派生与跨平台全端移植增强版本。**
+> **本仓库代码与架构派生自上游原项目 [Minireel/HGhub](https://github.com/Minireel/HGhub)。**
 > 
 > 由于上游官方遵循 Source-only 策略仅发布源码标签、不分发预编译安装包，本仓库致力于为 **macOS（Apple Silicon & Intel）**、**Windows on ARM (WoA)**、**Linux（x86_64 & ARM64）** 桌面端以及 **iOS (IPA 免签生产包)** 提供开箱即用的预编译安装包与自动化 CI 构建工作流。
 > 
@@ -145,7 +146,7 @@ pnpm linux:build             # Linux (deb + AppImage)
 2. 本项目为个人与社区的技术探索、跨平台交互实验项目。维护者与开发者不运营任何内容托管服务，不参与外部音视频内容的制作、上传或分发。
 3. 软件按现状（AS-IS）提供，不承诺任何外部接口的持续有效性。涉及第三方内容或标识的权利均归原权利人所有。
 
-## 👏 致谢
+## 👏 致谢与原项目
 
-- 感谢上游项目 [Minireel/HGhub](https://github.com/Minireel/HGhub) 团队的原生实现与架构设计。
-- 感谢 [Tauri](https://tauri.app/) 团队提供优秀的跨平台桌面框架。
+- **原项目官方仓库**：[Minireel/HGhub](https://github.com/Minireel/HGhub)（源码主仓库，感谢原作者团队的原生实现与架构设计）
+- **跨平台应用框架**：[Tauri](https://tauri.app/)（优秀的 Rust + Webview 跨平台框架）
