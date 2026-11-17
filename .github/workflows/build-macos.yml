@@ -110,7 +110,6 @@ jobs:
         with:
           name: updater-${{ matrix.arch }}
           path: artifacts/HGhub_${{ steps.ver.outputs.version }}_${{ matrix.arch }}.app.tar.gz*
-          archive: false
           if-no-files-found: error
 
   latest-json:
@@ -136,7 +135,6 @@ jobs:
         with:
           name: latest-json
           path: artifacts/latest.json
-          archive: false
           if-no-files-found: error
 
   publish-release:
