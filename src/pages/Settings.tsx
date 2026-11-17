@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { api, APP_VERSION, hostOf, logLine, platform, type UpdateInfo } from "../api";
+import { api, APP_VERSION, hostOf, logLine, platform } from "../api";
 import { useStore } from "../store";
 import { Modal, Toggle } from "../components/ui";
 import LinePicker from "../components/LinePicker";
+import { checkForUpdate, openUpdateDialog, setAutoDownload, useUpdateState } from "../updateStore";
 import { copyPlaybackLog, initPlaybackLog, setPlaybackLog, usePlaybackLog } from "../playbackDiagnostics";
 import { IBack, IBoltF, IBroom, IChevR, IHeart, IInfo, ILink, ILockF, IMoon, IRefresh, ISettings, ISun, IVolMute } from "../icons";
 
@@ -15,8 +16,7 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
   const [clearing, setClearing] = useState(false);
   const [lineOpen, setLineOpen] = useState(false);
   const [lineBase, setLineBase] = useState("");
-  const [checking, setChecking] = useState(false);
-  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const ups = useUpdateState();
   const playbackLog = usePlaybackLog();
   const [copyingLog, setCopyingLog] = useState(false);
 
@@ -26,16 +26,19 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
   useEffect(readLine, []);
   useEffect(() => { void initPlaybackLog(); }, []);
 
-  const checkUpdate = async () => {
-    setChecking(true);
-    try {
-      const info = await api.checkUpdate();
-      if (info.has_update) setUpdate(info);
-      else toast(`已是最新版本 v${info.current}`, "ok");
-    } catch (e) {
-      toast((e as Error).message || "检查更新失败", "info");
-    } finally {
-      setChecking(false);
+  const updateStatus = () => {
+    switch (ups.phase) {
+      case "checking": return "检查中…";
+      case "downloading": {
+        const pct = ups.total > 0 ? Math.min(100, Math.round((ups.downloaded / ups.total) * 100)) : null;
+        return pct === null ? "正在后台下载更新…" : `正在后台下载 ${pct}%`;
+      }
+      case "ready": return "更新已下载，点击打开窗口重启安装";
+      case "installing": return "正在安装更新…";
+      case "available":
+      case "legacy": return `发现新版本 v${ups.version}`;
+      case "error": return ups.error || "检查更新失败";
+      default: return `当前 v${APP_VERSION} · 支持应用内下载更新`;
     }
   };
 
@@ -183,14 +186,30 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
           </Section>
 
           <Section title="其他">
-            <button onClick={checkUpdate} disabled={checking} className="w-full flex items-center gap-3 px-3.5 py-3 text-left pressable disabled:opacity-60">
+            <button onClick={() => {
+              if (ups.phase === "available" || ups.phase === "ready" || ups.phase === "downloading") {
+                openUpdateDialog(true);
+                return;
+              }
+              void checkForUpdate(true).then((r) => {
+                if (r === "none") toast(`已是最新版本 v${APP_VERSION}`, "ok");
+              }).catch(() => toast("检查更新失败", "info"));
+            }} disabled={ups.phase === "checking" || ups.phase === "installing"} className="w-full flex items-center gap-3 px-3.5 py-3 text-left pressable disabled:opacity-60">
               <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><IRefresh size={16} /></span>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <div className="text-[12.5px] text-on">检查更新</div>
-                <div className="text-[10.5px] text-mut">{checking ? "检查中…" : `当前 v${APP_VERSION} · 对比 GitHub Release`}</div>
+                <div className="text-[10.5px] text-mut truncate">{updateStatus()}</div>
               </div>
               <IChevR size={15} className="text-mut" />
             </button>
+            <div className="flex items-center gap-3 px-3.5 py-3">
+              <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><IRefresh size={16} /></span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12.5px] text-on">自动下载更新</div>
+                <div className="text-[10.5px] text-mut">启动时自动检查并在后台下载，完成后提示重启安装（仅桌面端）</div>
+              </div>
+              <Toggle on={ups.autoDownload} onChange={(on) => { setAutoDownload(on); toast(on ? "已开启自动下载更新" : "已关闭自动下载更新", "info"); }} disabled={!ups.supported} label="自动下载更新" />
+            </div>
             <button onClick={() => setAbout(true)} className="w-full flex items-center gap-3 px-3.5 py-3 text-left pressable">
               <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><IInfo size={16} /></span>
               <div className="flex-1">
@@ -269,29 +288,6 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
               {clearing ? "清理中…" : "确定清理"}
             </button>
           </div>
-        </div>
-      </Modal>
-
-      <Modal open={!!update?.has_update} onClose={() => setUpdate(null)} width={392}>
-        <div className="p-5">
-          <div className="text-[15px] font-bold text-on">发现新版本</div>
-          <p className="text-[11.5px] text-mut mt-1.5">
-            v{update?.current} → <b className="text-on">v{update?.latest}</b>
-            {update?.published_at ? ` · ${update.published_at.slice(0, 10)}` : ""}
-          </p>
-          {!!update?.notes && (
-            <div className="mt-3 max-h-[180px] scroll-y rounded-(--r-sm) bg-s2 p-3 text-[11px] text-mut whitespace-pre-wrap leading-relaxed">{update.notes}</div>
-          )}
-          <div className="flex gap-2 mt-4">
-            <button onClick={() => setUpdate(null)} className="flex-1 h-9 rounded-(--r-ctl) bg-s3 text-[12.5px] text-on/80 pressable">稍后</button>
-            <button onClick={() => {
-              if (!update) return;
-              api.openUrl(update.url).catch(() => {
-                navigator.clipboard?.writeText(update.url).then(() => toast("下载地址已复制", "ok")).catch(() => {});
-              });
-            }} className="flex-1 h-9 rounded-(--r-ctl) bg-primary text-[12.5px] font-semibold text-on-primary pressable">前往下载</button>
-          </div>
-          <div className="text-[10px] text-dim mt-2.5 break-all">{update?.url}</div>
         </div>
       </Modal>
     </div>

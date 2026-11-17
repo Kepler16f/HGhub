@@ -56,7 +56,10 @@ jobs:
       - name: 安装前端依赖
         run: pnpm install --frozen-lockfile
 
-      - name: 构建 macOS 应用 (DMG + APP)
+      - name: 构建 macOS 应用 (DMG + APP + 更新包)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           pnpm tauri build --config src-tauri/tauri.macos.conf.json --target ${{ matrix.target }}
 
@@ -73,10 +76,25 @@ jobs:
             cp "$f" "artifacts/HGhub_${V}_${{ matrix.arch }}.dmg"
             found_dmg=1
           done
+
+          # 收集 updater 更新包与签名（供应用内自动更新使用）
+          found_updater=0
+          for f in $(find src-tauri/target -name '*.app.tar.gz'); do
+            echo "发现更新包: $f"
+            cp "$f" "artifacts/HGhub_${V}_${{ matrix.arch }}.app.tar.gz"
+            if [ -f "$f.sig" ]; then
+              cp "$f.sig" "artifacts/HGhub_${V}_${{ matrix.arch }}.app.tar.gz.sig"
+              found_updater=1
+            fi
+          done
           
           ls -lh artifacts/
           if [ "$found_dmg" -eq 0 ]; then
             echo "::error::未找到 DMG 构建产物"
+            exit 1
+          fi
+          if [ "$found_updater" -eq 0 ]; then
+            echo "::error::未找到已签名的 updater 更新包 (.app.tar.gz.sig)"
             exit 1
           fi
 
@@ -84,6 +102,40 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           path: artifacts/HGhub_${{ steps.ver.outputs.version }}_${{ matrix.arch }}.dmg
+          archive: false
+          if-no-files-found: error
+
+      - name: 上传应用内更新包
+        uses: actions/upload-artifact@v7
+        with:
+          name: updater-${{ matrix.arch }}
+          path: artifacts/HGhub_${{ steps.ver.outputs.version }}_${{ matrix.arch }}.app.tar.gz*
+          archive: false
+          if-no-files-found: error
+
+  latest-json:
+    name: 生成更新清单 latest.json
+    needs: [macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载更新包与签名
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 生成 latest.json
+        run: |
+          ls -lh artifacts
+          node scripts/make-latest-json.mjs artifacts
+
+      - name: 上传 latest.json
+        uses: actions/upload-artifact@v7
+        with:
+          name: latest-json
+          path: artifacts/latest.json
           archive: false
           if-no-files-found: error
 

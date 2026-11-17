@@ -1,6 +1,6 @@
 # HGhub 分流规则
 
-统计日期：2026-11-07。包含 5 条域名后缀规则和 3 条精确域名规则；没有已确认的固定服务端 IP/CIDR。规则只决定流量如何分流，不改变应用的账号信任或正文清洗策略。
+统计日期：2026-11-17。包含 8 条域名后缀规则和 3 条精确域名规则；没有已确认的固定服务端 IP/CIDR。规则只决定流量如何分流，不改变应用的账号信任或正文清洗策略。
 
 ## 域名来源
 
@@ -8,14 +8,17 @@
 | --- | --- | --- |
 | 后缀 | `huangguoai.com` | 固定 API 线路 1，正文相对 URL 的基址；`src-tauri/src/net.rs`、`src/html.ts` |
 | 后缀 | `huangguoai.ai` | 固定 API 线路 2；`src-tauri/src/lines.rs` |
-| 精确 | `huangguoai.pages.dev` | 镜像发布页及其 `publish.js`；`src-tauri/src/lines.rs` |
+| 精确 | `huang-guo.pages.dev` | 镜像发布页及其 `publish.js`（2026-11-17 起，旧页 `huangguoai.pages.dev` 已下线）；`src-tauri/src/lines.rs` |
 | 后缀 | `drleao.cn` | 图片 CDN 样本 `pic.drleao.cn`；`src-tauri/src/media.rs` 联网测试 |
 | 后缀 | `hzjvlo.cn` | 视频 CDN 样本 `yd-lphu-hls.hzjvlo.cn`；`src-tauri/src/media.rs` 联网测试 |
-| 后缀 | `xxbgwypx.cc` | 镜像样本 `thu.xxbgwypx.cc` 及动态子域；`src-tauri/src/lines.rs` 测试 |
+| 后缀 | `xxbgwypx.cc` | 旧镜像域名，仅作 301 跳转入口；`src-tauri/src/lines.rs` 测试 |
+| 后缀 | `fvlelaqt.cc` | 新 publish.js 中的镜像根域名之一；`src-tauri/src/lines.rs` |
+| 后缀 | `bmikbxhi.cc` | 新 publish.js 中的镜像根域名之一；`src-tauri/src/lines.rs` |
+| 后缀 | `qnlycc.cn` | 封面 CDN `pic.qnlycc.cn`，2026-11-17 真实列表接口返回样本 |
 | 精确 | `api.github.com` | GitHub Release 更新元数据；`src-tauri/src/api.rs` |
 | 精确 | `github.com` | 更新页面，用户点击后交给外部浏览器；`src-tauri/src/api.rs` |
 
-CDN 和镜像三条后缀来自仓库已有样本，不能据此认定它们当前仍在使用。当前发布页在线核对返回 HTTP 403。API 返回的封面、播放地址，HLS 子清单、分片、密钥、重定向地址及镜像列表都可能引入新域名，因此这是一份源码已知目标清单，不是完整流量白名单。新域名应依据代理连接日志继续补充。
+镜像根域名与子域前缀来自发布页的 `publish.js`，会随上游轮换（2026-11-17 为 `fvlelaqt.cc` / `bmikbxhi.cc`，子域为 `thu`、`pku` 等校名）。发布页本身是 Cloudflare Pages，通常可直连；镜像站点能否直连取决于当地网络。API 返回的封面、播放地址，HLS 子清单、分片、密钥、重定向地址及镜像列表都可能引入新域名，因此这是一份源码已知目标清单，不是完整流量白名单。新域名应依据代理连接日志继续补充。
 
 GitHub 是共享基础设施，这两条精确规则也会匹配其他程序对同域名的访问。应用只打开更新网页，不自动下载更新包；外部浏览器下载时使用的其他 GitHub/CDN 域名未纳入本清单。
 
@@ -83,4 +86,4 @@ sing-box rule-set compile --output rules/hghub.srs rules/hghub.json
 
 ## 本地验证
 
-已使用 Mihomo v1.19.32 的 `-t` 和 sing-box v1.14.3 的 `check` 检查导入配置；确认 `.list` 与 `.json` 的 8 条目标一致，并对 sing-box 源规则及编译后的 `.srs` 完成 42 项正反匹配检查。验证临时目录已自动清理。
+已使用 Mihomo v1.19.32 的 `-t` 和 sing-box v1.14.3 的 `check` 检查导入配置（2026-11-07 的 8 条目标，42 项正反匹配检查）。2026-11-17 将发布页、镜像根域名与封面 CDN 更新为 11 条目标时，仅对 `.list` 与 `.json` 做了静态一致性核对，环境未安装 Mihomo / sing-box，未复跑导入检查；`hghub.srs` 仍是旧版编译产物，更新域名后需重新编译：`sing-box rule-set compile --output rules/hghub.srs rules/hghub.json`。

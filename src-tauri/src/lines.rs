@@ -1,8 +1,12 @@
 //! 线路（数据源）：固定线路 + 地址发布页上的镜像线路。
 //!
 //! 上游只是域名在变，请求链路与数据模型完全一致，所以「切线路」等价于换 `net::base()`。
-//! 镜像地址来自 <https://huangguoai.pages.dev/>：那个页面本身是空壳，真正的清单在
+//! 镜像地址来自 <https://huang-guo.pages.dev/>：那个页面本身是空壳，真正的清单在
 //! `publish.js` 里（`var urls` 域名数组 + `var subdomains` 子域数组，页面自己随机拼）。
+//!
+//! 2026-11-17：旧发布页 `huangguoai.pages.dev` 已下线，官方迁到 `huang-guo.pages.dev`；
+//! 镜像根域名也轮换为 `fvlelaqt.cc` / `bmikbxhi.cc`（从新 publish.js 自动读取，无需改代码）。
+//! 固定线路的 `huangguoai.com` / `.ai` 仍是官方声明的不变地址，但大陆网络通常需代理。
 
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
@@ -13,7 +17,7 @@ pub const FIXED: [(&str, &str); 2] = [
     ("固定线路 2", "https://huangguoai.ai"),
 ];
 
-const PUBLISH_PAGE: &str = "https://huangguoai.pages.dev/";
+const PUBLISH_PAGE: &str = "https://huang-guo.pages.dev/";
 /// 镜像列表上限（子域 × 域名是笛卡尔积，界面只展示这么多）
 const MIRROR_MAX: usize = 60;
 /// 单条线路探测超时

@@ -94,7 +94,9 @@ pub async fn line_probe(urls: Vec<String>) -> Result<Value, String> {
 
 /* ───────────────────────── 更新检查 ───────────────────────── */
 
-const REPO: &str = "Minireel/HGhub";
+// 检查更新必须对准本 fork 的 Release：上游已转向插件版并重置为 0.0.x，
+// 继续查 Minireel/HGhub 会让 1.x 客户端永远判定「已是最新」。
+const REPO: &str = "Kepler16f/HGhub";
 
 fn ver_parts(v: &str) -> Vec<u64> {
     v.trim()
