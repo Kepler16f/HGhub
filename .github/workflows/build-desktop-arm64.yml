@@ -77,19 +77,25 @@ jobs:
       - name: 安装前端依赖
         run: pnpm install --frozen-lockfile
 
-      - name: 构建 Windows ARM64 (NSIS 安装包)
-        run: pnpm tauri build --bundles nsis --target aarch64-pc-windows-msvc
+      - name: 构建 Windows ARM64 (NSIS 安装包 + 更新包)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --config src-tauri/tauri.windows.conf.json --target aarch64-pc-windows-msvc
 
       - name: 收集产物（安装包 + 便携包）
         shell: pwsh
         run: |
           $v = (Get-Content "package.json" | ConvertFrom-Json).version
-          New-Item -ItemType Directory -Force artifacts | Out-Null
+          New-Item -ItemType Directory -Force artifacts | Out-Item -Force
           
-          # 收集并重命名 NSIS 安装包
+          # 收集并重命名 NSIS 安装包（+ updater 签名）
           $setup = Get-ChildItem "src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/*.exe" | Select-Object -First 1
           if ($setup) {
             Copy-Item $setup.FullName "artifacts/HGhub_${v}_arm64_setup.exe"
+            if (Test-Path "$($setup.FullName).sig") {
+              Copy-Item "$($setup.FullName).sig" "artifacts/HGhub_${v}_arm64_setup.exe.sig"
+            }
           }
           
           # 打包便携包
@@ -134,8 +140,18 @@ jobs:
       - name: 查看待上传文件
         run: ls -lh release-files
 
-      - name: 上传至 v1.2.1-desktop Release
+      - name: 上传至当前版本 Release（不存在则跳过）
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
         run: |
-          gh release upload v1.2.1-desktop release-files/* --clobber --repo ${{ github.repository }}
+          TAG="v${VERSION}"
+          # 分支构建时 ref_name 是分支名，取 package.json 里的版本号
+          if [ "$GITHUB_REF" != "refs/tags/v*" ]; then
+            TAG="v$(node -p "require('./package.json').version")"
+          fi
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-files/* --clobber --repo "${{ github.repository }}"
+          else
+            echo "Release $TAG 尚未创建，产物保留在 Actions artifacts 中"
+          fi

@@ -308,7 +308,29 @@ pub fn err_text(e: &reqwest::Error) -> String {
         }
         src = s.source();
     }
-    out
+    with_hint(out)
+}
+
+/// 连接层失败时补一句能直接照做的下一步。
+///
+/// 反馈里最常见的是「固定线路在大陆网络不可达（被重置 / 超时）」，而固定线路
+/// 又不能被镜像替代（镜像只允许游客，见 [`trusted_auth_origin`]），所以必须
+/// 把「开代理」或「换线路」这两条出路直接写进错误里，而不是丢一串英文异常。
+fn with_hint(msg: String) -> String {
+    let lower = msg.to_ascii_lowercase();
+    let connect_failed = lower.contains("tcp connect error")
+        || lower.contains("connection reset")
+        || lower.contains("connection refused")
+        || lower.contains("operation timed out")
+        || lower.contains("os error 54")
+        || lower.contains("os error 60")
+        || lower.contains("error sending request")
+        || lower.contains("dns error");
+    if connect_failed && !msg.contains("请确认代理") {
+        format!("{msg}（请确认代理已生效；也可在 设置 → 线路 中刷新并切换可用线路）")
+    } else {
+        msg
+    }
 }
 
 fn dns_summary(addrs: impl IntoIterator<Item = SocketAddr>) -> Value {
@@ -481,7 +503,7 @@ pub async fn edge(
             ))
         && !trusted_auth_origin(&cur)
     {
-        return Err("镜像线路仅供游客浏览；登录/注册请切换到固定线路".into());
+        return Err("镜像线路仅供游客浏览；登录/注册请切换到固定线路（固定线路在大陆网络需使用代理）".into());
     }
     let (encoded, ctype) = match &body {
         Some(v) => (
