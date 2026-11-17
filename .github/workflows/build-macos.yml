@@ -142,7 +142,7 @@ jobs:
   publish-release:
     name: 发布 GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [macos]
+    needs: [macos, latest-json]
     runs-on: ubuntu-latest
     permissions:
       contents: write

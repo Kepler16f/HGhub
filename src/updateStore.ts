@@ -123,8 +123,29 @@ export function openUpdateDialog(open = true) {
  */
 export async function checkForUpdate(manual = true): Promise<"available" | "none" | "error"> {
   if (!supported) {
-    if (manual) emit({ phase: "error", error: "当前平台请前往 Release 页面手动下载更新", dialogOpen: true });
-    return "error";
+    // 移动端没有 updater 后端：直接查 GitHub Release，走 legacy 窗口
+    if (!manual) return "error";
+    emit({ phase: "checking", dialogOpen: true, error: "" });
+    try {
+      const info = await api.checkUpdate();
+      if (info.has_update) {
+        emit({
+          phase: "legacy",
+          version: info.latest,
+          currentVersion: info.current,
+          notes: info.notes || "",
+          date: info.published_at || "",
+          url: info.url,
+          dialogOpen: true,
+        });
+        return "available";
+      }
+      emit({ phase: "idle", dialogOpen: false });
+      return "none";
+    } catch (e) {
+      emit({ phase: "error", error: errText(e), dialogOpen: true });
+      return "error";
+    }
   }
   if (busy) return "none";
   busy = true;
