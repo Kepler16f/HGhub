@@ -57,7 +57,7 @@ jobs:
         shell: pwsh
         run: |
           $v = "${{ steps.ver.outputs.version }}"
-          New-Item -ItemType Directory -Force artifacts | Out-Item -Force
+          New-Item -ItemType Directory -Force artifacts | Out-Null
           # NSIS 安装包 + updater 签名
           $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
           if ($setup) {

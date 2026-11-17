@@ -87,7 +87,7 @@ jobs:
         shell: pwsh
         run: |
           $v = (Get-Content "package.json" | ConvertFrom-Json).version
-          New-Item -ItemType Directory -Force artifacts | Out-Item -Force
+          New-Item -ItemType Directory -Force artifacts | Out-Null
           
           # 收集并重命名 NSIS 安装包（+ updater 签名）
           $setup = Get-ChildItem "src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/*.exe" | Select-Object -First 1
