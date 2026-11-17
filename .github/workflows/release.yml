@@ -217,7 +217,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # 打包目标（app + dmg）取自 src-tauri/tauri.macos.conf.json；未配置开发者证书，产物为 ad-hoc 签名
-      - name: 构建（Universal dmg）
+      - name: 构建（Universal dmg + 更新包）
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --config src-tauri/tauri.macos.conf.json --target universal-apple-darwin
 
       - name: 收集产物
@@ -227,6 +230,12 @@ jobs:
           mkdir -p artifacts
           cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg \
              "artifacts/HGhub_${{ steps.ver.outputs.version }}_universal.dmg"
+          # updater 签名产物（universal 包同时覆盖两种架构）
+          for f in src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz; do
+            [ -e "$f" ] || continue
+            cp "$f" "artifacts/HGhub_${{ steps.ver.outputs.version }}_universal.app.tar.gz"
+            [ -f "$f.sig" ] && cp "$f.sig" "artifacts/HGhub_${{ steps.ver.outputs.version }}_universal.app.tar.gz.sig"
+          done
           ls -lh artifacts
 
       - uses: actions/upload-artifact@v4
