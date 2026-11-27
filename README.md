@@ -15,25 +15,27 @@
 ## 🚀 快速下载安装包 (Releases)
 
 ### 💻 桌面端安装包
-👉 **[前往 GitHub Releases 页面下载最新桌面版 (v1.2.2)](https://github.com/Kepler16f/HGhub/releases/tag/v1.2.2)**
+👉 **[前往 GitHub Releases 页面下载最新全平台版 (v1.2.3)](https://github.com/Kepler16f/HGhub/releases/tag/v1.2.3)**
 
 | 操作系统 | 目标架构 | 软件包类型 | 下载文件名 | 适用设备 / 说明 |
 | :--- | :--- | :--- | :--- | :--- |
-| **macOS** | Apple Silicon | DMG 镜像 | `HGhub_1.2.2_arm64.dmg` | **Mac 推荐**：M1 / M2 / M3 / M4 系列芯片机型 |
-| **macOS** | Intel | DMG 镜像 | `HGhub_1.2.2_x64.dmg` | 传统 Intel 处理器 Mac 机型 |
-| **Windows** | ARM64 (WoA) | 安装包 / 便携包 | `HGhub_1.2.2_arm64_setup.exe`<br>`HGhub_1.2.2_arm64_portable.zip` | **Windows on ARM 原生**：骁龙 X Elite / 微软 Surface 等 |
-| **Windows** | x86_64 | 安装包 / 便携包 | `HGhub_1.2.2_x64_setup.exe`<br>`HGhub_1.2.2_x64_portable.zip` | 常规 Intel / AMD Windows 电脑 |
-| **Linux** | x86_64 | deb / AppImage | `HGhub_1.2.2_amd64.deb`<br>`HGhub_1.2.2_amd64.AppImage` | Ubuntu / Debian / Deepin / Mint x86_64 桌面端 |
-| **Linux** | ARM64 (aarch64) | deb / AppImage | `HGhub_1.2.2_arm64.deb`<br>`HGhub_1.2.2_arm64.AppImage` | 树莓派 4/5、ARM64 架构 Linux 电脑与掌机 |
+| **macOS** | Apple Silicon | DMG 镜像 | `HGhub_1.2.3_arm64.dmg` | **Mac 推荐**：M1 / M2 / M3 / M4 系列芯片机型 |
+| **macOS** | Intel | DMG 镜像 | `HGhub_1.2.3_x64.dmg` | 传统 Intel 处理器 Mac 机型 |
+| **macOS** | 通用版 (Universal) | DMG 镜像 | `HGhub_1.2.3_universal.dmg` | 同时兼容 Apple Silicon 与 Intel |
+| **Windows** | ARM64 (WoA) | 安装包 / 便携包 | `HGhub_1.2.3_arm64_setup.exe`<br>`HGhub_1.2.3_arm64_portable.zip` | **Windows on ARM 原生**：骁龙 X Elite / 微软 Surface 等 |
+| **Windows** | x86_64 | 安装包 / 便携包 | `HGhub_1.2.3_x64_setup.exe`<br>`HGhub_1.2.3_x64_portable.zip` | 常规 Intel / AMD Windows 电脑 |
+| **Linux** | x86_64 | deb / AppImage | `HGhub_1.2.3_amd64.deb`<br>`HGhub_1.2.3_amd64.AppImage` | Ubuntu / Debian / Deepin / Mint x86_64 桌面端 |
+| **Linux** | ARM64 (aarch64) | deb / AppImage | `HGhub_1.2.3_arm64.deb`<br>`HGhub_1.2.3_aarch64.AppImage` | 树莓派 4/5、ARM64 架构 Linux 电脑与掌机 |
 
 ---
 
-### 📱 iOS 移动端安装包
-👉 **[前往 GitHub Releases 页面下载 iOS 安装包 (1.2.2-ios)](https://github.com/Kepler16f/HGhub/releases/tag/v1.2.2-ios)**
+### 📱 移动端安装包
+👉 **[前往 GitHub Releases 页面下载移动端安装包 (v1.2.3)](https://github.com/Kepler16f/HGhub/releases/tag/v1.2.3)**
 
 | 操作系统 | 软件包类型 | 下载文件名 | 适用平台 / 安装方式 |
 | :--- | :--- | :--- | :--- |
-| **iOS** (16+) | 未签名生产包 (`.ipa`) | `HGhub_1.2.2_ios.ipa` | 支持 **TrollStore（巨魔）** 永久安装、AltStore / SideStore / 轻松签自签安装 |
+| **Android** | 已签名安装包 (`.apk`) | `HGhub_1.2.3_arm64.apk`<br>`HGhub_1.2.3_arm.apk` / `x86_64.apk` | 主流安卓手机/平板推荐 `arm64.apk` |
+| **iOS** (16+) | 未签名生产包 (`.ipa`) | `HGhub_1.2.3_ios.ipa` | 支持 **TrollStore（巨魔）** 永久安装、AltStore / SideStore / 轻松签自签安装 |
 
 ---
 
@@ -72,8 +74,8 @@ sudo xattr -rd com.apple.quarantine /Applications/HGhub.app
 针对搭载 **高通骁龙 X Elite / 骁龙 8cx / 微软 SQ 系列芯片** 的 Windows on ARM 设备（如 Surface Pro、Surface Laptop 等）：
 - **原生架构执行**：针对 `aarch64-pc-windows-msvc` 原生编译，无需经过 Prism / x86 仿真转译层，CPU 占用极低、功耗大幅优化且界面流畅响应。
 - **便携版与安装版双选**：
-  - `HGhub_1.2.2_arm64_setup.exe`：全自动引导安装程序，创建开始菜单与桌面快捷方式；
-  - `HGhub_1.2.2_arm64_portable.zip`：免安装便携绿色版，解压到任意文件夹双击 `HGhub.exe` 即可直接运行。
+  - `HGhub_1.2.3_arm64_setup.exe`：全自动引导安装程序，创建开始菜单与桌面快捷方式；
+  - `HGhub_1.2.3_arm64_portable.zip`：免安装便携绿色版，解压到任意文件夹双击 `HGhub.exe` 即可直接运行。
 
 ---
 
@@ -83,10 +85,10 @@ sudo xattr -rd com.apple.quarantine /Applications/HGhub.app
 在终端中进入安装包所在目录执行：
 ```bash
 # x86_64
-sudo dpkg -i HGhub_1.2.2_amd64.deb
+sudo dpkg -i HGhub_1.2.3_amd64.deb
 
 # ARM64
-sudo dpkg -i HGhub_1.2.2_arm64.deb
+sudo dpkg -i HGhub_1.2.3_arm64.deb
 
 # 若提示缺少底层系统库（如 webkit2gtk），执行以下命令自动修复依赖：
 sudo apt-get install -f
@@ -95,8 +97,8 @@ sudo apt-get install -f
 ### 2. 通用免安装版 (`.AppImage`)
 直接赋予执行权限后双击或终端运行：
 ```bash
-chmod +x HGhub_1.2.2_*.AppImage
-./HGhub_1.2.2_*.AppImage
+chmod +x HGhub_1.2.3_*.AppImage
+./HGhub_1.2.3_*.AppImage
 ```
 
 ---
@@ -104,7 +106,7 @@ chmod +x HGhub_1.2.2_*.AppImage
 ## 📱 iOS (IPA) 侧载安装与专属特性说明
 
 ### 1. 安装方式
-- **TrollStore（巨魔商店）**：下载 `HGhub_1.2.2_ios.ipa` 后分享至巨魔商店，一键永久免签安装，无证书过期失效困扰；
+- **TrollStore（巨魔商店）**：下载 `HGhub_1.2.3_ios.ipa` 后分享至巨魔商店，一键永久免签安装，无证书过期失效困扰；
 - **个人自签工具**：使用 AltStore、SideStore 或 Sideloadly，通过个人 Apple ID 每 7 天续签；
 - **企业证书 / 签名软件**：导入轻松签（ESign）、牛蛙助手、Feather、全能签直接签名安装。
 

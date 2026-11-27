@@ -1,11 +1,9 @@
 name: Build Linux
 
 # 在 GitHub 托管的 ubuntu-22.04 runner 上编译 Linux 桌面端安装包（deb + AppImage）。
-# 触发方式：手动（workflow_dispatch）或打 v* 标签时自动构建。
+# 触发方式：手动（workflow_dispatch）；tag 发布已统一收敛至 release.yml。
 on:
   workflow_dispatch:
-  push:
-    tags: ["v*"]
 
 env:
   CI: "true"

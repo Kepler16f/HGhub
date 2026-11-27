@@ -9,11 +9,14 @@ DOMAIN,huang-guo.pages.dev
 DOMAIN-SUFFIX,drleao.cn
 DOMAIN-SUFFIX,hzjvlo.cn
 DOMAIN-SUFFIX,xxbgwypx.cc
-# Mirror roots from the current publish.js (rotated 2026-11-17)
+# Mirror roots from publish.js (rotated 2026-11-17 / 2026-11-27)
 DOMAIN-SUFFIX,fvlelaqt.cc
 DOMAIN-SUFFIX,bmikbxhi.cc
-# Cover CDN observed in the live list API on 2026-11-17
+DOMAIN-SUFFIX,qxeylvrkf.cc
+DOMAIN-SUFFIX,hvgbwwrxd.cc
+# Cover & HLS CDNs observed in live traffic
 DOMAIN-SUFFIX,qnlycc.cn
+DOMAIN-SUFFIX,tjyyjk.cn
 # Update API and release page (shared GitHub infrastructure)
 DOMAIN,api.github.com
 DOMAIN,github.com
