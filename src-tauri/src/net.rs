@@ -99,6 +99,7 @@ pub fn set_base(url: &str) -> Result<String, String> {
         let _ = std::fs::write(path, json!({ "base": next }).to_string());
     }
     if previous != next {
+        refresh_client();
         crate::playback_log::record(
             "line.changed",
             json!({
@@ -122,59 +123,126 @@ fn proxy_override() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// 解析 Windows 注册表 `ProxyServer` 字符串（支持 `127.0.0.1:7890`、`http://...`、`http=...;https=...`）。
+fn parse_windows_proxy_server(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let picked = if trimmed.contains('=') {
+        let mut by_proto: Vec<(&str, &str)> = Vec::new();
+        for part in trimmed.split(';') {
+            if let Some((k, v)) = part.split_once('=') {
+                let k = k.trim();
+                let v = v.trim();
+                if !k.is_empty() && !v.is_empty() {
+                    by_proto.push((k, v));
+                }
+            }
+        }
+        ["https", "http", "socks"]
+            .into_iter()
+            .find_map(|proto| {
+                by_proto
+                    .iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case(proto))
+                    .map(|(_, v)| *v)
+            })?
+    } else {
+        trimmed.split(';').next().map(str::trim).filter(|s| !s.is_empty())?
+    };
+    if picked.contains("://") {
+        Some(picked.to_string())
+    } else {
+        Some(format!("http://{picked}"))
+    }
+}
+
 #[cfg(target_os = "windows")]
-fn windows_system_proxy_enabled() -> bool {
+fn windows_registry_proxy() -> Option<String> {
     use winreg::enums::HKEY_CURRENT_USER;
     use winreg::RegKey;
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let Ok(key) =
-        hkcu.open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings")
-    else {
-        return false;
-    };
+    let key = hkcu
+        .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings")
+        .ok()?;
     let enabled: u32 = key.get_value("ProxyEnable").unwrap_or(0);
     if enabled == 0 {
-        return false;
+        return None;
     }
     let server: String = key.get_value("ProxyServer").unwrap_or_default();
-    !server.trim().is_empty()
+    parse_windows_proxy_server(&server)
 }
 
 #[cfg(not(target_os = "windows"))]
-fn windows_system_proxy_enabled() -> bool {
-    false
+fn windows_registry_proxy() -> Option<String> {
+    None
 }
 
-/// 是否处于代理环境（环境变量或 Windows 系统代理已启用）。
-/// 开启 HTTP 代理时域名应交给代理远端解析，避免本机被污染的 DNS 返回 `127.0.0.1` 导致误拦。
-fn has_active_proxy() -> bool {
-    if proxy_override().is_some() {
-        return true;
+enum ProxyMode {
+    Direct,
+    Explicit(String),
+    #[cfg(not(target_os = "windows"))]
+    SystemEnv,
+}
+
+fn effective_proxy_mode(force_direct: bool) -> ProxyMode {
+    if force_direct {
+        return ProxyMode::Direct;
     }
-    for name in [
-        "HTTPS_PROXY",
-        "https_proxy",
-        "HTTP_PROXY",
-        "http_proxy",
-        "ALL_PROXY",
-        "all_proxy",
-    ] {
-        if std::env::var(name)
-            .ok()
-            .is_some_and(|v| !v.trim().is_empty())
-        {
-            return true;
+    if let Some(p) = proxy_override() {
+        return ProxyMode::Explicit(p);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // Windows 下严格以系统代理开关（ProxyEnable）为准，屏蔽残留用户环境变量 HTTP_PROXY/HTTPS_PROXY
+        match windows_registry_proxy() {
+            Some(p) => ProxyMode::Explicit(p),
+            None => ProxyMode::Direct,
         }
     }
-    windows_system_proxy_enabled()
+    #[cfg(not(target_os = "windows"))]
+    {
+        ProxyMode::SystemEnv
+    }
 }
 
-/// 按**当前**系统代理设置新建一个客户端。
-///
-/// 注意：reqwest 的 `system-proxy` 只在构建时读一次注册表 / 环境变量。代理软件被关掉后，
-/// 旧客户端仍会往 `127.0.0.1:7897` 建隧道，症状是满屏 `tunnel error: failed to create
-/// underlying connection`（浏览器却是通的，因为它每次都重读系统代理）。所以这里允许重建。
-fn build_client(host: &str, addrs: &[SocketAddr]) -> Result<reqwest::Client, String> {
+/// 是否处于代理环境。
+fn has_active_proxy() -> bool {
+    match effective_proxy_mode(false) {
+        ProxyMode::Direct => false,
+        ProxyMode::Explicit(_) => true,
+        #[cfg(not(target_os = "windows"))]
+        ProxyMode::SystemEnv => {
+            for name in [
+                "HTTPS_PROXY",
+                "https_proxy",
+                "HTTP_PROXY",
+                "http_proxy",
+                "ALL_PROXY",
+                "all_proxy",
+            ] {
+                if std::env::var(name)
+                    .ok()
+                    .is_some_and(|v| !v.trim().is_empty())
+                {
+                    return true;
+                }
+            }
+            false
+        }
+    }
+}
+
+/// 可在大陆网络直接访问的域名（若本地代理失效或节点异常，应允许降级直连）。
+fn is_direct_friendly_host(host: &str) -> bool {
+    !host.eq_ignore_ascii_case("huangguoai.com")
+        && !host.eq_ignore_ascii_case("huangguoai.ai")
+        && !host.eq_ignore_ascii_case("api.github.com")
+}
+
+/// 按**当前**代理模式新建客户端。
+fn build_client(host: &str, addrs: &[SocketAddr], force_direct: bool) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder()
         .user_agent(UA)
         .timeout(Duration::from_secs(20))
@@ -187,10 +255,18 @@ fn build_client(host: &str, addrs: &[SocketAddr]) -> Result<reqwest::Client, Str
     if !addrs.is_empty() {
         builder = builder.resolve_to_addrs(host, addrs);
     }
-    if let Some(p) = proxy_override() {
-        // 错误信息不能含原始代理 URL（其中可能有用户名/密码）。
-        let proxy = reqwest::Proxy::all(&p).map_err(|_| "HGHUB_PROXY 配置无效（已隐藏原始值）")?;
-        builder = builder.proxy(proxy);
+    match effective_proxy_mode(force_direct) {
+        ProxyMode::Direct => {
+            builder = builder.no_proxy();
+        }
+        ProxyMode::Explicit(p) => {
+            // 错误信息不能含原始代理 URL（其中可能有用户名/密码）。
+            let proxy =
+                reqwest::Proxy::all(&p).map_err(|_| "代理配置无效（已隐藏原始值）")?;
+            builder = builder.no_proxy().proxy(proxy);
+        }
+        #[cfg(not(target_os = "windows"))]
+        ProxyMode::SystemEnv => {}
     }
     builder
         .build()
@@ -208,27 +284,29 @@ fn cached_client(cache: &ClientCache, key: &str, now: Instant) -> Option<Arc<req
         .map(|(_, http)| http.clone())
 }
 
-/// 缓存按模式、主机和端口隔离；有效期内仅复用已经检查并固定地址的客户端。
-/// 到期后重新检查全部 DNS 答案，不使用旧连接绕过新的目标检查。
-async fn client_for(raw: &str) -> Result<(url::Url, Arc<reqwest::Client>), String> {
+/// 缓存按模式、是否直连、主机和端口隔离；有效期内仅复用已经检查并固定地址的客户端。
+async fn client_for_mode(
+    raw: &str,
+    force_direct: bool,
+) -> Result<(url::Url, Arc<reqwest::Client>), String> {
     let strict = network_policy::strict_security();
     let target = network_policy::parse_target_with_mode(raw, strict)?;
     let host = target.host_str().ok_or("目标缺少主机名")?;
     let port = target.port_or_known_default().ok_or("目标端口无效")?;
-    let proxied = has_active_proxy();
-    let key = format!("{strict}:{proxied}:{host}:{port}");
+    let proxied = !force_direct && has_active_proxy();
+    let key = format!("{strict}:{force_direct}:{proxied}:{host}:{port}");
     {
         let cache = CLIENTS.lock().map_err(|_| "HTTP 客户端锁失败")?;
         if let Some(http) = cached_client(&cache, &key, Instant::now()) {
             return Ok((target, http));
         }
     }
-    let addrs = if strict && !proxied {
+    let addrs = if strict && (force_direct || !proxied) {
         network_policy::resolve_target(&target, strict).await?
     } else {
         Vec::new()
     };
-    let http = Arc::new(build_client(host, &addrs)?);
+    let http = Arc::new(build_client(host, &addrs, force_direct)?);
     let now = Instant::now();
     let mut cache = CLIENTS.lock().map_err(|_| "HTTP 客户端锁失败")?;
     // 同时到达的请求可能已完成解析；不延长已有结果的有效期。
@@ -250,12 +328,12 @@ pub fn refresh_client() {
     crate::edge_crypto::clear_sessions();
 }
 
-/// 不可信 GET 的统一入口；自动重定向被关闭，每一跳重新检查 URL、DNS 并固定解析地址。
-pub async fn get(
+async fn get_with_mode(
     raw: &str,
     timeout: Duration,
     accept: Option<&str>,
     referer: Option<&str>,
+    force_direct: bool,
 ) -> Result<reqwest::Response, String> {
     tokio::time::timeout(timeout, async {
         let policy_error = |phase: &str, error: String| {
@@ -265,7 +343,9 @@ pub async fn get(
         let mut next = network_policy::parse_target(raw).map_err(|e| policy_error("parse", e))?;
         for hop in 0..=5 {
             let resolving = Instant::now();
-            let (target, http) = client_for(next.as_str()).await.map_err(|e| policy_error("dns_or_client", e))?;
+            let (target, http) = client_for_mode(next.as_str(), force_direct)
+                .await
+                .map_err(|e| policy_error("dns_or_client", e))?;
             crate::playback_log::record("network.target_ready", json!({"resource": crate::playback_log::resource_id(raw), "target_resource": crate::playback_log::resource_id(target.as_str()), "dns_or_client_ms": resolving.elapsed().as_millis() as u64, "hop": hop}));
             let mut request = http.get(target.clone()).timeout(timeout);
             if let Some(value) = accept {
@@ -293,6 +373,49 @@ pub async fn get(
     })
     .await
     .map_err(|_| "请求超时".to_string())?
+}
+
+/// 不可信 GET 的统一入口；若开启代理遇到死隧道或镜像友好站点失败，自动回退纯直连一次。
+pub async fn get(
+    raw: &str,
+    timeout: Duration,
+    accept: Option<&str>,
+    referer: Option<&str>,
+) -> Result<reqwest::Response, String> {
+    let first = get_with_mode(raw, timeout, accept, referer, false).await;
+    if !has_active_proxy() {
+        return first;
+    }
+    let host = url::Url::parse(raw)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
+        .unwrap_or_default();
+    let should_retry_direct = match &first {
+        Ok(resp) => matches!(resp.status().as_u16(), 502 | 504) && is_direct_friendly_host(&host),
+        Err(e) => is_proxy_error(e) || is_direct_friendly_host(&host),
+    };
+    if should_retry_direct {
+        if let Ok(resp) = get_with_mode(raw, timeout, accept, referer, true).await {
+            return Ok(resp);
+        }
+    }
+    first
+}
+
+/// 优先纯直连抓取（适用于地址发布页与镜像清单）；直连失败且存在可用代理时再走代理。
+pub async fn get_direct_first(raw: &str, timeout: Duration) -> Result<reqwest::Response, String> {
+    let direct = get_with_mode(raw, timeout, None, None, true).await;
+    if let Ok(resp) = &direct {
+        if resp.status().is_success() {
+            return direct;
+        }
+    }
+    if has_active_proxy() {
+        if let Ok(proxied) = get_with_mode(raw, timeout, None, None, false).await {
+            return Ok(proxied);
+        }
+    }
+    direct
 }
 
 /// 只返回代理的协议/主机/端口；解析失败时隐藏整个值，绝不回传认证或查询参数。
@@ -446,6 +569,7 @@ pub async fn diagnose() -> Value {
         "http": http,
         "api": api,
         "proxy_active": has_active_proxy(),
+        "windows_registry_proxy": windows_registry_proxy().map(|p| redact_proxy(&p)),
         "env": {
             "HTTP_PROXY": std::env::var("HTTP_PROXY").ok().map(|p| redact_proxy(&p)),
             "HTTPS_PROXY": std::env::var("HTTPS_PROXY").ok().map(|p| redact_proxy(&p)),
@@ -557,18 +681,18 @@ pub struct RawHttpResponse {
     pub text: String,
 }
 
-/// 发送 JSON POST 至边缘网关端点（不跟随重定向，经 `client_for` 统一安全校验与代理路由）。
-pub async fn post_json_raw(
+async fn post_json_raw_with_mode(
     url: &str,
     timeout: Duration,
     body: &Value,
     extra_headers: &[(&str, &str)],
     referer: &str,
+    force_direct: bool,
 ) -> Result<RawHttpResponse, String> {
     tokio::time::timeout(timeout, async {
         let started = Instant::now();
         let target_url = network_policy::parse_target(url)?;
-        let (target, client) = client_for(target_url.as_str()).await?;
+        let (target, client) = client_for_mode(target_url.as_str(), force_direct).await?;
         let target_host = target.host_str().unwrap_or("").to_string();
         let mut req = client
             .post(target)
@@ -618,6 +742,36 @@ pub async fn post_json_raw(
     })
     .await
     .map_err(|_| "请求超时".to_string())?
+}
+
+/// 发送 JSON POST 至边缘网关端点（代理失败或镜像友好站点异常时自动回退纯直连一次）。
+pub async fn post_json_raw(
+    url: &str,
+    timeout: Duration,
+    body: &Value,
+    extra_headers: &[(&str, &str)],
+    referer: &str,
+) -> Result<RawHttpResponse, String> {
+    let first = post_json_raw_with_mode(url, timeout, body, extra_headers, referer, false).await;
+    if !has_active_proxy() {
+        return first;
+    }
+    let host = url::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
+        .unwrap_or_default();
+    let should_retry_direct = match &first {
+        Ok(r) => matches!(r.meta.status, 502 | 504) && is_direct_friendly_host(&host),
+        Err(e) => is_proxy_error(e) || is_direct_friendly_host(&host),
+    };
+    if should_retry_direct {
+        if let Ok(ok_resp) =
+            post_json_raw_with_mode(url, timeout, body, extra_headers, referer, true).await
+        {
+            return Ok(ok_resp);
+        }
+    }
+    first
 }
 
 /// 业务请求：走 `dx150-edge-v1` 分域加密网关（兼容 `public` 快速 JSON 通道）。
@@ -696,6 +850,15 @@ pub async fn edge(
 
                 if resp.status == 401 || resp.status == 403 {
                     return Err("401".to_string());
+                }
+                if resp.status == 410 {
+                    if let Some(msg) = serde_json::from_str::<Value>(&resp.body)
+                        .ok()
+                        .and_then(|v| v.get("msg").and_then(|m| m.as_str()).map(str::to_owned))
+                        .filter(|s| !s.trim().is_empty())
+                    {
+                        return Err(msg);
+                    }
                 }
                 if !(200..300).contains(&resp.status) {
                     return Err(format!(
@@ -916,6 +1079,23 @@ mod tests {
         }
         assert!(edge_redirect_target(&current, 301, "http://example.com/", true).is_err());
         assert!(edge_redirect_target(&current, 301, "https://127.0.0.1/", true).is_err());
+    }
+
+    #[test]
+    fn parses_windows_proxy_server_formats() {
+        assert_eq!(
+            parse_windows_proxy_server("127.0.0.1:7890").as_deref(),
+            Some("http://127.0.0.1:7890")
+        );
+        assert_eq!(
+            parse_windows_proxy_server("http://127.0.0.1:7890").as_deref(),
+            Some("http://127.0.0.1:7890")
+        );
+        assert_eq!(
+            parse_windows_proxy_server("http=127.0.0.1:7890;https=127.0.0.1:7891").as_deref(),
+            Some("http://127.0.0.1:7891")
+        );
+        assert_eq!(parse_windows_proxy_server("   "), None);
     }
 
     #[test]

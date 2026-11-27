@@ -128,6 +128,7 @@ type Store = {
   volume: number; setVolume: (v: number) => void;
   searchHist: string[]; addSearch: (q: string) => void; clearSearchHist: () => void;
   strictSecurity: boolean; strictSecurityReady: boolean; securityPending: boolean; cliRelaxed: boolean; setStrictSecurity: (on: boolean) => Promise<void>;
+  lineVersion: number; bumpLineVersion: () => void;
   toasts: Toast[]; toast: (msg: string, icon?: Toast["icon"]) => void;
 };
 
@@ -150,6 +151,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [cliRelaxed, setCliRelaxed] = useState(false);
   const [strictSecurityReady, setStrictSecurityReady] = useState(false);
   const [securityPending, setSecurityPending] = useState(false);
+  const [lineVersion, setLineVersion] = useState(0);
   const toastSeq = useRef(0);
 
   useEffect(() => {
@@ -186,6 +188,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setSecurityPending(false);
     }
   }, [strictSecurityReady]);
+
+  const bumpLineVersion = useCallback(() => setLineVersion((v) => v + 1), []);
 
   const toast = useCallback((msg: string, icon?: Toast["icon"]) => {
     const id = ++toastSeq.current;
@@ -300,11 +304,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     muteOnStartup: p.muteOnStartup, setMuteOnStartup,
     searchHist: p.searchHist, addSearch, clearSearchHist,
     strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
+    lineVersion, bumpLineVersion,
     toasts, toast,
   }), [theme, tab, setTab, stack, push, pop, user, loginOpen, logout,
     p, toggleLikeLocal, toggleFavLocal, toggleFollowLocal, addHistory, clearHistory,
     setMuted, setMuteOnStartup, setVolume, addSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
-    toasts, toast, theater, setTheater, fs, setFs, clean, setClean]);
+    lineVersion, bumpLineVersion, toasts, toast, theater, setTheater, fs, setFs, clean, setClean]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -7,28 +7,37 @@ import { ISearch } from "../icons";
 import { Empty } from "../components/ui";
 
 export default function Home({ active, bottomInset }: { active: boolean; bottomInset: number }) {
-  const { toast } = useStore();
+  const { toast, lineVersion } = useStore();
   const [items, setItems] = useState<VideoCard[]>([]);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
   const loadingRef = useRef(false);
+  const doneRef = useRef(false);
 
-  const load = useCallback(async (p: number) => {
-    if (loadingRef.current || done) return;
+  const load = useCallback(async (p: number, reset = false) => {
+    if (loadingRef.current || (!reset && doneRef.current)) return;
     loadingRef.current = true;
+    if (reset) {
+      doneRef.current = false;
+      setDone(false);
+    }
     setLoading(true);
     setError("");
     try {
       const res = await api.feed(p, 10);
       const list = res?.items || [];
       setItems((prev) => {
-        const seen = new Set(prev.map((x) => x.id));
-        return [...prev, ...list.filter((x) => !seen.has(x.id))];
+        const base = reset ? [] : prev;
+        const seen = new Set(base.map((x) => x.id));
+        return [...base, ...list.filter((x) => !seen.has(x.id))];
       });
       setPage(p);
-      if (!list.length || (res?.pagination && p >= res.pagination.pages)) setDone(true);
+      if (!list.length || (res?.pagination && p >= res.pagination.pages)) {
+        doneRef.current = true;
+        setDone(true);
+      }
     } catch (e) {
       const message = (e as Error).message || "加载失败";
       setError(message);
@@ -37,9 +46,19 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [done, toast]);
+  }, [toast]);
 
   useEffect(() => { if (!items.length) load(1); /* eslint-disable-next-line */ }, []);
+  useEffect(() => {
+    if (lineVersion === 0) return;
+    loadingRef.current = false;
+    doneRef.current = false;
+    setDone(false);
+    setItems([]);
+    setPage(1);
+    setError("");
+    void load(1, true);
+  }, [lineVersion, load]);
 
   const ids = items.map((v) => v.id);
 

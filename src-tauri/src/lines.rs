@@ -17,6 +17,7 @@ pub const FIXED: [(&str, &str); 1] = [("固定线路（官方主站）", "https:
 
 const PUBLISH_PAGE: &str = "https://huang-guo.pages.dev/";
 const FALLBACK_NAV_PAGE: &str = "https://huangguoai.ai/";
+const SEED_MIRROR_DOMAINS: [&str; 2] = ["qxeylvrkf.cc", "hvgbwwrxd.cc"];
 const DEFAULT_SUBDOMAINS: [&str; 19] = [
     "thu", "pku", "fdu", "sjtu", "zju", "nju", "xmu", "sysu", "whu", "jlu", "scu", "ruc", "bnu",
     "nku", "tju", "sdu", "hust", "xjtu", "hit",
@@ -111,12 +112,72 @@ async fn mirrors_from_nav_page() -> Result<Value, String> {
     Ok(json!({ "source": FALLBACK_NAV_PAGE, "items": items }))
 }
 
-/// 拉地址发布页 → 解析 publish.js → 拼出镜像地址（失败时自动回退到官方导航页 `huangguoai.ai`）。
-pub async fn mirrors() -> Result<Value, String> {
-    match mirrors_from_publish_page().await {
-        Ok(v) => Ok(v),
-        Err(primary_err) => mirrors_from_nav_page().await.map_err(|_| primary_err),
+fn push_unique_domain(out: &mut Vec<String>, host_or_url: &str) {
+    let domain = host_or_url
+        .trim()
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .trim();
+    if domain.is_empty() {
+        return;
     }
+    let root = match domain.split_once('.') {
+        Some((first, rest)) if DEFAULT_SUBDOMAINS.contains(&first) || first.len() >= 4 && rest.contains('.') => {
+            rest
+        }
+        _ => domain,
+    };
+    if !root.is_empty() && root.contains('.') && !out.iter().any(|x| x == root) {
+        out.push(root.to_string());
+    }
+}
+
+async fn mirrors_from_seed_entries() -> Result<Value, String> {
+    let mut domains: Vec<String> = Vec::new();
+    for seed_dom in SEED_MIRROR_DOMAINS {
+        let origin = format!("https://thu.{seed_dom}");
+        if let Ok(data) = crate::net::edge(&origin, "GET", "/api/site/entries", None, None).await {
+            if let Some(arr) = data.get("entries").and_then(|e| e.as_array()) {
+                for entry in arr {
+                    if entry.get("key").and_then(|k| k.as_str()) == Some("latest") {
+                        if let Some(u) = entry.get("url").and_then(|u| u.as_str()) {
+                            push_unique_domain(&mut domains, u);
+                        }
+                    }
+                }
+            }
+            if !domains.is_empty() {
+                break;
+            }
+        }
+    }
+    for seed_dom in SEED_MIRROR_DOMAINS {
+        push_unique_domain(&mut domains, seed_dom);
+    }
+    let subs = DEFAULT_SUBDOMAINS.iter().map(|s| s.to_string()).collect();
+    let items = build_mirror_items(domains, subs);
+    Ok(json!({ "source": "seed-entries", "items": items }))
+}
+
+/// 拉地址发布页 → 解析 publish.js → 拼出镜像地址；失败时依次回退种子站点接口、导航页与内置根域名。
+pub async fn mirrors() -> Result<Value, String> {
+    if let Ok(v) = mirrors_from_publish_page().await {
+        return Ok(v);
+    }
+    if let Ok(v) = mirrors_from_seed_entries().await {
+        return Ok(v);
+    }
+    if let Ok(v) = mirrors_from_nav_page().await {
+        return Ok(v);
+    }
+    let items = build_mirror_items(
+        SEED_MIRROR_DOMAINS.iter().map(|s| s.to_string()).collect(),
+        DEFAULT_SUBDOMAINS.iter().map(|s| s.to_string()).collect(),
+    );
+    Ok(json!({ "source": "builtin-seed", "items": items }))
 }
 
 /// 实测线路 API 握手可用性。
@@ -155,7 +216,7 @@ async fn probe_one(url: String) -> Value {
 }
 
 async fn get_text(url: &str) -> Result<String, String> {
-    let resp = crate::net::get(url, Duration::from_secs(12), None, None).await?;
+    let resp = crate::net::get_direct_first(url, Duration::from_secs(10)).await?;
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status()));
     }

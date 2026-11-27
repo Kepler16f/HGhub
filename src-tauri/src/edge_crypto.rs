@@ -850,4 +850,33 @@ mod tests {
             println!("origin={origin} vid={vid} kind={kind} stream_ok=true");
         }
     }
+
+    /// 手动跑：`cargo test --lib -- --ignored edge_crypto::tests::dead_proxy_direct_mirror_smoke -- --nocapture`
+    /// 验证即使环境变量/代理指向已关闭死端口 `127.0.0.1:19999`，直连镜像发现与拉流仍能正常成功。
+    #[tokio::test]
+    #[ignore = "联网测试：模拟死代理环境变量下的纯直连镜像发现与拉流"]
+    async fn dead_proxy_direct_mirror_smoke() {
+        std::env::set_var("HTTP_PROXY", "http://127.0.0.1:19999");
+        std::env::set_var("HTTPS_PROXY", "http://127.0.0.1:19999");
+        std::env::set_var("HGHUB_PROXY", "http://127.0.0.1:19999");
+        crate::net::refresh_client();
+
+        let mirrors = crate::lines::mirrors().await.expect("mirrors with dead proxy");
+        let mirror_url = mirrors["items"][0]["url"]
+            .as_str()
+            .expect("first mirror")
+            .to_string();
+        let feed = crate::net::edge(&mirror_url, "GET", "/api/videos?page=1&size=2", None, None)
+            .await
+            .expect("mirror feed with dead proxy");
+        let cover = feed["items"][0]["cover"].as_str().expect("cover");
+        let (kind, bytes) = crate::media::load_image(cover)
+            .await
+            .expect("cover with dead proxy");
+        assert!(kind.starts_with("image/") && bytes.len() > 1000);
+
+        std::env::remove_var("HGHUB_PROXY");
+        crate::net::refresh_client();
+        println!("dead_proxy_direct_mirror_smoke OK: mirror={mirror_url} cover={kind}");
+    }
 }

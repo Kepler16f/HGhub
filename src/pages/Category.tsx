@@ -15,7 +15,7 @@ export const CHANNELS = [
 
 /* ================= 分类总览 ================= */
 export default function Category({ wide, active }: { wide: boolean; active: boolean }) {
-  const { push } = useStore();
+  const { push, lineVersion } = useStore();
   const [rows, setRows] = useState<Record<string, VideoCard[]>>({});
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
@@ -23,6 +23,8 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
   const mounted = useRef(false);
   const started = useRef(false);
   const pending = useRef(new Set<string>());
+  const activeRef = useRef(active);
+  activeRef.current = active;
 
   useEffect(() => {
     mounted.current = true;
@@ -57,6 +59,21 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
     CHANNELS.forEach(c => { void loadPreview(c.cate); });
     void loadPreview("posts");
   }, [active, loadPreview]);
+
+  useEffect(() => {
+    if (lineVersion === 0) return;
+    pending.current.clear();
+    started.current = false;
+    setRows({});
+    setPosts([]);
+    setErrors({});
+    setLoading({});
+    if (activeRef.current) {
+      started.current = true;
+      CHANNELS.forEach(c => { void loadPreview(c.cate); });
+      void loadPreview("posts");
+    }
+  }, [lineVersion, loadPreview]);
 
   return (
     <div className="absolute inset-0 bg-bg flex flex-col">
