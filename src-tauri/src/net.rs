@@ -59,11 +59,12 @@ pub fn normalize_base(raw: &str) -> Option<String> {
 }
 
 /// 远端发布页只提供游客镜像，不能扩展账号密码的信任范围。
+/// 2026-11-27：`huangguoai.ai` 已调整为静态地址导航页，不再提供业务接口。
 pub fn trusted_auth_origin(origin: &str) -> bool {
-    matches!(origin, "https://huangguoai.com" | "https://huangguoai.ai")
+    origin == "https://huangguoai.com"
 }
 
-/// 启动时读回上次选择的线路（文件不存在 / 内容坏了就保持默认）。
+/// 启动时读回上次选择的线路（文件不存在 / 内容坏了 / 旧导航域名就保持默认主站）。
 pub fn bind_base(dir: &std::path::Path) {
     network_policy::bind_security(dir);
     let path = dir.join("line.json");
@@ -73,6 +74,7 @@ pub fn bind_base(dir: &std::path::Path) {
                 .get("base")
                 .and_then(|x| x.as_str())
                 .and_then(normalize_base)
+                .filter(|u| u != "https://huangguoai.ai")
             {
                 if let Ok(mut cur) = BASE.write() {
                     *cur = next;
@@ -118,6 +120,53 @@ fn proxy_override() -> Option<String> {
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_system_proxy_enabled() -> bool {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let Ok(key) =
+        hkcu.open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings")
+    else {
+        return false;
+    };
+    let enabled: u32 = key.get_value("ProxyEnable").unwrap_or(0);
+    if enabled == 0 {
+        return false;
+    }
+    let server: String = key.get_value("ProxyServer").unwrap_or_default();
+    !server.trim().is_empty()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn windows_system_proxy_enabled() -> bool {
+    false
+}
+
+/// 是否处于代理环境（环境变量或 Windows 系统代理已启用）。
+/// 开启 HTTP 代理时域名应交给代理远端解析，避免本机被污染的 DNS 返回 `127.0.0.1` 导致误拦。
+fn has_active_proxy() -> bool {
+    if proxy_override().is_some() {
+        return true;
+    }
+    for name in [
+        "HTTPS_PROXY",
+        "https_proxy",
+        "HTTP_PROXY",
+        "http_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+    ] {
+        if std::env::var(name)
+            .ok()
+            .is_some_and(|v| !v.trim().is_empty())
+        {
+            return true;
+        }
+    }
+    windows_system_proxy_enabled()
 }
 
 /// 按**当前**系统代理设置新建一个客户端。
@@ -166,14 +215,15 @@ async fn client_for(raw: &str) -> Result<(url::Url, Arc<reqwest::Client>), Strin
     let target = network_policy::parse_target_with_mode(raw, strict)?;
     let host = target.host_str().ok_or("目标缺少主机名")?;
     let port = target.port_or_known_default().ok_or("目标端口无效")?;
-    let key = format!("{strict}:{host}:{port}");
+    let proxied = has_active_proxy();
+    let key = format!("{strict}:{proxied}:{host}:{port}");
     {
         let cache = CLIENTS.lock().map_err(|_| "HTTP 客户端锁失败")?;
         if let Some(http) = cached_client(&cache, &key, Instant::now()) {
             return Ok((target, http));
         }
     }
-    let addrs = if strict {
+    let addrs = if strict && !proxied {
         network_policy::resolve_target(&target, strict).await?
     } else {
         Vec::new()
@@ -197,6 +247,7 @@ pub fn refresh_client() {
     if let Ok(mut cache) = CLIENTS.lock() {
         cache.clear();
     }
+    crate::edge_crypto::clear_sessions();
 }
 
 /// 不可信 GET 的统一入口；自动重定向被关闭，每一跳重新检查 URL、DNS 并固定解析地址。
@@ -383,12 +434,18 @@ pub async fn diagnose() -> Value {
             "ms": started.elapsed().as_millis() as u64,
         }),
     };
+    let api = match crate::lines::probe_api(&cur).await {
+        Ok(ms) => json!({ "ok": true, "ms": ms }),
+        Err((status, err)) => json!({ "ok": false, "status": status, "error": err }),
+    };
 
     json!({
         "base": cur,
         "host": host,
         "dns": dns,
         "http": http,
+        "api": api,
+        "proxy_active": has_active_proxy(),
         "env": {
             "HTTP_PROXY": std::env::var("HTTP_PROXY").ok().map(|p| redact_proxy(&p)),
             "HTTPS_PROXY": std::env::var("HTTPS_PROXY").ok().map(|p| redact_proxy(&p)),
@@ -474,6 +531,7 @@ fn edge_operation(path: &str) -> &'static str {
 }
 
 /// 仅无请求体、无凭据的逻辑 GET 可以迁移网关；信封本身仍使用 POST。
+#[cfg(test)]
 fn edge_redirect_target(
     current: &url::Url,
     status: u16,
@@ -486,7 +544,83 @@ fn edge_redirect_target(
     network_policy::redirect_target(current, location)
 }
 
-/// 业务请求：走边缘信封。
+pub struct RawHttpMeta {
+    pub status: u16,
+    pub headers_ms: u64,
+    pub target_host: String,
+    pub response_kind: &'static str,
+    pub gateway: &'static str,
+}
+
+pub struct RawHttpResponse {
+    pub meta: RawHttpMeta,
+    pub text: String,
+}
+
+/// 发送 JSON POST 至边缘网关端点（不跟随重定向，经 `client_for` 统一安全校验与代理路由）。
+pub async fn post_json_raw(
+    url: &str,
+    timeout: Duration,
+    body: &Value,
+    extra_headers: &[(&str, &str)],
+    referer: &str,
+) -> Result<RawHttpResponse, String> {
+    tokio::time::timeout(timeout, async {
+        let started = Instant::now();
+        let target_url = network_policy::parse_target(url)?;
+        let (target, client) = client_for(target_url.as_str()).await?;
+        let target_host = target.host_str().unwrap_or("").to_string();
+        let mut req = client
+            .post(target)
+            .timeout(timeout)
+            .header("Accept", "application/json")
+            .header("Referer", referer)
+            .json(body);
+        for (k, v) in extra_headers {
+            req = req.header(*k, *v);
+        }
+        let resp = req.send().await.map_err(|e| err_text(&e))?;
+        let status = resp.status();
+        let headers_ms = started.elapsed().as_millis() as u64;
+        if status.is_redirection() {
+            return Err("业务接口重定向已拒绝".into());
+        }
+        let ctype = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let response_kind = if ctype.contains("json") {
+            "json"
+        } else if ctype.contains("html") {
+            "html"
+        } else {
+            "other"
+        };
+        let gateway = if resp.headers().contains_key("x-amz-cf-id") {
+            "cloudfront"
+        } else if resp.headers().contains_key("cf-ray") {
+            "cloudflare"
+        } else {
+            "other"
+        };
+        let text = resp.text().await.map_err(|e| err_text(&e))?;
+        Ok(RawHttpResponse {
+            meta: RawHttpMeta {
+                status: status.as_u16(),
+                headers_ms,
+                target_host,
+                response_kind,
+                gateway,
+            },
+            text,
+        })
+    })
+    .await
+    .map_err(|_| "请求超时".to_string())?
+}
+
+/// 业务请求：走 `dx150-edge-v1` 分域加密网关（兼容 `public` 快速 JSON 通道）。
 pub async fn edge(
     origin: &str,
     method: &str,
@@ -512,16 +646,9 @@ pub async fn edge(
         ),
         None => (String::new(), ""),
     };
-    let envelope = json!({
-        "method": method,
-        "path": path,
-        "body": encoded,
-        "content_type": ctype,
-    });
 
-    let url = format!("{cur}/api/edge/request");
-    let referer = format!("{cur}/");
     let token = token.map(|s| s.to_string());
+    let scope = crate::edge_crypto::route_scope(method, path);
 
     static NEXT_EDGE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let request = NEXT_EDGE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -532,81 +659,60 @@ pub async fn edge(
         .to_string();
     let operation = edge_operation(path);
     let mut attempt = 0;
-    let guest_get = method.eq_ignore_ascii_case("GET") && body.is_none() && token.is_none();
     // 取播放地址的 POST 没有副作用，和 GET 一样允许重试
     let can_retry = (method.eq_ignore_ascii_case("GET") && body.is_none())
         || (method.eq_ignore_ascii_case("POST") && operation == "play");
     let value = with_retry(can_retry, || {
         attempt += 1;
         let attempt = attempt;
-        let envelope = envelope.clone();
         let token = token.clone();
-        let url = url.clone();
-        let referer = referer.clone();
         let line_host = line_host.clone();
+        let cur = cur.clone();
+        let encoded = encoded.clone();
         async move {
             let started = Instant::now();
-            crate::playback_log::record("api.begin", json!({"request": request, "attempt": attempt, "operation": operation, "method": method, "line_host": line_host}));
+            crate::playback_log::record("api.begin", json!({"request": request, "attempt": attempt, "operation": operation, "scope": scope.as_str(), "method": method, "line_host": line_host}));
             let mut status_code = None;
             let mut headers_ms = None;
             let mut target_host = line_host.clone();
             let mut response_kind = "unknown";
             let mut gateway = "other";
             let result = async {
-                let mut next = network_policy::parse_target(&url)?;
-                for hop in 0..=5 {
-                    let (target, client) = client_for(next.as_str()).await?;
-                    target_host = target.host_str().unwrap_or("").to_string();
-                    let mut req = client
-                        .post(target.clone())
-                        .header("Accept", "application/json")
-                        .header("Referer", &referer)
-                        .json(&envelope);
-                    if let Some(t) = token.as_deref() {
-                        if !t.is_empty() {
-                            req = req.header("Authorization", format!("Bearer {t}"));
-                        }
-                    }
-                    let resp = req.send().await.map_err(|e| err_text(&e))?;
-                    let status = resp.status();
-                    status_code = Some(status.as_u16());
-                    headers_ms = Some(started.elapsed().as_millis() as u64);
-                    let ctype = resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
-                    response_kind = if ctype.contains("json") { "json" } else if ctype.contains("html") { "html" } else { "other" };
-                    gateway = if resp.headers().contains_key("x-amz-cf-id") { "cloudfront" } else if resp.headers().contains_key("cf-ray") { "cloudflare" } else { "other" };
-                    // 逐跳重建并检查客户端；不自动把信封 POST 改成无信封 GET。
-                    if status.is_redirection() {
-                        if hop == 5 {
-                            return Err("重定向次数超过限制".into());
-                        }
-                        let location = resp
-                            .headers()
-                            .get(reqwest::header::LOCATION)
-                            .and_then(|h| h.to_str().ok())
-                            .ok_or("重定向缺少有效 Location")?;
-                        next = edge_redirect_target(&target, status.as_u16(), location, guest_get)?;
-                        continue;
-                    }
-                    let text = resp.text().await.map_err(|e| err_text(&e))?;
-                    if status.as_u16() == 401 || status.as_u16() == 403 {
-                        return Err("401".to_string());
-                    }
-                    if !status.is_success() {
-                        return Err(format!(
-                            "HTTP {status}: {}",
-                            text.chars().take(160).collect::<String>()
-                        ));
-                    }
-                    if text.trim().is_empty() {
-                        return Ok(Value::Null);
-                    }
-                    return serde_json::from_str::<Value>(&text)
-                        .map_err(|e| format!("{e}: {}", text.chars().take(160).collect::<String>()));
+                let resp = crate::edge_crypto::send(
+                    &cur,
+                    scope,
+                    method,
+                    path,
+                    &encoded,
+                    ctype,
+                    token.as_deref(),
+                )
+                .await?;
+                status_code = Some(resp.status);
+                headers_ms = Some(resp.meta.headers_ms);
+                target_host = resp.meta.target_host;
+                response_kind = resp.meta.response_kind;
+                gateway = resp.meta.gateway;
+
+                if resp.status == 401 || resp.status == 403 {
+                    return Err("401".to_string());
                 }
-                Err("重定向次数超过限制".into())
-            }.await;
+                if !(200..300).contains(&resp.status) {
+                    return Err(format!(
+                        "HTTP {}: {}",
+                        resp.status,
+                        resp.body.chars().take(160).collect::<String>()
+                    ));
+                }
+                if resp.body.trim().is_empty() {
+                    return Ok(Value::Null);
+                }
+                serde_json::from_str::<Value>(&resp.body)
+                    .map_err(|e| format!("{e}: {}", resp.body.chars().take(160).collect::<String>()))
+            }
+            .await;
             crate::playback_log::record("api.end", json!({
-                "request": request, "attempt": attempt, "operation": operation, "method": method,
+                "request": request, "attempt": attempt, "operation": operation, "scope": scope.as_str(), "method": method,
                 "line_host": line_host, "target_host": target_host, "status": status_code,
                 "headers_ms": headers_ms, "elapsed_ms": started.elapsed().as_millis() as u64,
                 "response_kind": response_kind, "gateway": gateway,
@@ -844,7 +950,7 @@ mod tests {
             assert_eq!(normalize_base(raw), None, "{raw}");
         }
         assert!(trusted_auth_origin(DEFAULT_BASE));
-        assert!(trusted_auth_origin("https://huangguoai.ai"));
+        assert!(!trusted_auth_origin("https://huangguoai.ai"));
         assert!(!trusted_auth_origin("https://mirror.example"));
         assert!(!trusted_auth_origin("https://huangguoai.com.evil.example"));
     }

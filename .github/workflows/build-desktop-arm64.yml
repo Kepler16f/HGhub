@@ -2,10 +2,21 @@ name: Build Desktop ARM64 (Linux & Windows)
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: "构建目标 (all / windows-arm64 / linux-arm64)"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - windows-arm64
+          - linux-arm64
 
 jobs:
   # ================= Linux ARM64：deb + AppImage =================
   linux-arm64:
+    if: inputs.target == 'all' || inputs.target == 'linux-arm64' || inputs.target == ''
     name: Linux ARM64 (deb + AppImage)
     runs-on: ubuntu-22.04-arm
     steps:
@@ -54,6 +65,7 @@ jobs:
 
   # ================= Windows ARM64：NSIS 安装包 + 便携包 =================
   windows-arm64:
+    if: inputs.target == 'all' || inputs.target == 'windows-arm64' || inputs.target == ''
     name: Windows ARM64 (setup + portable)
     runs-on: windows-latest
     steps:
@@ -117,6 +129,7 @@ jobs:
 
   # ================= 上传至最新 Release =================
   publish:
+    if: startsWith(github.ref, 'refs/tags/v')
     name: 上传构建产物至 Release
     needs: [linux-arm64, windows-arm64]
     runs-on: ubuntu-latest

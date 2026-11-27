@@ -12,12 +12,15 @@ use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 
 /// 固定线路：写死在客户端里，不依赖任何外部页面。
-pub const FIXED: [(&str, &str); 2] = [
-    ("固定线路 1", "https://huangguoai.com"),
-    ("固定线路 2", "https://huangguoai.ai"),
-];
+/// 2026-11-27：`huangguoai.ai` 已改为静态导航页，移除出业务线路列表。
+pub const FIXED: [(&str, &str); 1] = [("固定线路（官方主站）", "https://huangguoai.com")];
 
 const PUBLISH_PAGE: &str = "https://huang-guo.pages.dev/";
+const FALLBACK_NAV_PAGE: &str = "https://huangguoai.ai/";
+const DEFAULT_SUBDOMAINS: [&str; 19] = [
+    "thu", "pku", "fdu", "sjtu", "zju", "nju", "xmu", "sysu", "whu", "jlu", "scu", "ruc", "bnu",
+    "nku", "tju", "sdu", "hust", "xjtu", "hit",
+];
 /// 镜像列表上限（子域 × 域名是笛卡尔积，界面只展示这么多）
 const MIRROR_MAX: usize = 60;
 /// 单条线路探测超时
@@ -30,19 +33,7 @@ pub fn fixed() -> Value {
         .collect::<Vec<_>>())
 }
 
-/// 拉地址发布页 → 解析 publish.js → 拼出镜像地址。只在用户点开「线路」时调用。
-pub async fn mirrors() -> Result<Value, String> {
-    let html = get_text(PUBLISH_PAGE).await?;
-    let js_rel = script_src(&html).unwrap_or_else(|| "publish.js".to_string());
-    let js_url = absolute(PUBLISH_PAGE, &js_rel);
-    let js = get_text(&js_url).await?;
-
-    let domains = js_array(&js, "var urls");
-    let subs = js_array(&js, "var subdomains");
-    if domains.is_empty() {
-        return Err("地址发布页格式有变化：没找到镜像域名".to_string());
-    }
-
+fn build_mirror_items(domains: Vec<String>, subs: Vec<String>) -> Vec<Value> {
     let mut items: Vec<Value> = Vec::new();
     let mut seen = std::collections::HashSet::new();
     'outer: for domain in domains {
@@ -65,11 +56,72 @@ pub async fn mirrors() -> Result<Value, String> {
             }
         }
     }
+    items
+}
+
+async fn mirrors_from_publish_page() -> Result<Value, String> {
+    let html = get_text(PUBLISH_PAGE).await?;
+    let js_rel = script_src(&html).unwrap_or_else(|| "publish.js".to_string());
+    let js_url = absolute(PUBLISH_PAGE, &js_rel);
+    let js = get_text(&js_url).await?;
+
+    let domains = js_array(&js, "var urls");
+    let subs = js_array(&js, "var subdomains");
+    if domains.is_empty() {
+        return Err("地址发布页格式有变化：没找到镜像域名".to_string());
+    }
+
+    let items = build_mirror_items(domains, subs);
     if items.is_empty() {
         return Err("地址发布页里没有可用的镜像地址".to_string());
     }
 
     Ok(json!({ "source": PUBLISH_PAGE, "script": js_url, "items": items }))
+}
+
+fn extract_nav_tails(html: &str) -> Vec<String> {
+    let mut tails = Vec::new();
+    let mut rest = html;
+    let needle = "data-route-prefix-tail=\"";
+    while let Some(i) = rest.find(needle) {
+        let after = &rest[i + needle.len()..];
+        let Some(end) = after.find('"') else {
+            break;
+        };
+        let candidate = after[..end].trim();
+        if !candidate.is_empty() && !tails.iter().any(|x| x == candidate) {
+            tails.push(candidate.to_string());
+        }
+        rest = &after[end..];
+    }
+    tails
+}
+
+async fn mirrors_from_nav_page() -> Result<Value, String> {
+    let html = get_text(FALLBACK_NAV_PAGE).await?;
+    let tails = extract_nav_tails(&html);
+    if tails.is_empty() {
+        return Err("备用导航页未包含镜像根域名".to_string());
+    }
+    let subs = DEFAULT_SUBDOMAINS.iter().map(|s| s.to_string()).collect();
+    let items = build_mirror_items(tails, subs);
+    if items.is_empty() {
+        return Err("备用导航页没有可用的镜像地址".to_string());
+    }
+    Ok(json!({ "source": FALLBACK_NAV_PAGE, "items": items }))
+}
+
+/// 拉地址发布页 → 解析 publish.js → 拼出镜像地址（失败时自动回退到官方导航页 `huangguoai.ai`）。
+pub async fn mirrors() -> Result<Value, String> {
+    match mirrors_from_publish_page().await {
+        Ok(v) => Ok(v),
+        Err(primary_err) => mirrors_from_nav_page().await.map_err(|_| primary_err),
+    }
+}
+
+/// 实测线路 API 握手可用性。
+pub async fn probe_api(origin: &str) -> Result<u64, (Option<u16>, String)> {
+    crate::edge_crypto::probe_hello(origin, PROBE_TIMEOUT).await
 }
 
 /// 可达性探测（并发 6 条一组）。只报结果，不做自动切换。
@@ -91,22 +143,14 @@ pub async fn probe(urls: Vec<String>) -> Value {
 }
 
 async fn probe_one(url: String) -> Value {
-    let target = format!("{}/", url.trim_end_matches('/'));
+    let base = url.trim_end_matches('/');
     let started = Instant::now();
-    let res = crate::net::get(
-        &target,
-        PROBE_TIMEOUT,
-        Some("text/html,application/xhtml+xml"),
-        None,
-    )
-    .await;
-    let ms = started.elapsed().as_millis() as u64;
-    match res {
-        Ok(r) => {
-            let status = r.status().as_u16();
-            json!({ "url": url, "ok": status < 400, "status": status, "ms": ms })
+    match probe_api(base).await {
+        Ok(ms) => json!({ "url": url, "ok": true, "status": 200, "ms": ms }),
+        Err((status, e)) => {
+            let ms = started.elapsed().as_millis() as u64;
+            json!({ "url": url, "ok": false, "status": status, "ms": ms, "error": e })
         }
-        Err(e) => json!({ "url": url, "ok": false, "ms": ms, "error": e }),
     }
 }
 
@@ -256,6 +300,19 @@ var foreverUrls = [
     fn picks_script_src() {
         let html = r#"<link rel="stylesheet" href="publish.css?1" /><script type="text/javascript" src="publish.js?20261103-2"></script>"#;
         assert_eq!(script_src(html).as_deref(), Some("publish.js?20261103-2"));
+    }
+
+    #[test]
+    fn extracts_nav_tails_uniquely() {
+        let html = r#"
+            <article data-go-home-route data-route-prefix-tail="qxeylvrkf.cc"></article>
+            <article data-go-home-route data-route-prefix-tail="qxeylvrkf.cc"></article>
+            <article data-go-home-route data-route-prefix-tail="hvgbwwrxd.cc"></article>
+        "#;
+        assert_eq!(
+            extract_nav_tails(html),
+            vec!["qxeylvrkf.cc", "hvgbwwrxd.cc"]
+        );
     }
 
     /// 手动跑：`cargo test --lib -- --ignored lines::tests::mirrors_live -- --nocapture`
